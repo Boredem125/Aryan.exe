@@ -108,7 +108,9 @@ export const NODES: GameNode[] = [
   },
   {
     id: "UPL",
-    label: "UPL Limited",
+    // Label is deliberately non-identifying: it appears in the LEADS block
+    // while still sealed, so naming the employer here would leak it.
+    label: "The Placement",
     tier: 1,
     teaser: "He shipped something into a Fortune 500 and it is still running.",
     triggers: [
