@@ -1,107 +1,116 @@
-import { nodeById, type GameNode } from "@/lib/game/nodes";
-import { levelFor, TOTAL_NODES } from "@/lib/game/levels";
-import { visibleTeasers } from "@/lib/game/matcher";
-import type { Intent } from "@/lib/game/matcher";
+import { nodeById, TOTAL_NODES, type GameNode } from "@/lib/game/nodes";
+import { renderCatalogue } from "@/lib/game/commands";
+import { sealed, type Intent } from "@/lib/game/matcher";
 import type { Progress } from "@/lib/game/progress";
-import { publicNodeCount } from "@/lib/game/progress";
-import { projectById, experience, contact, patentCount } from "@/lib/profile";
+import { tacticDef, type Tactic } from "@/lib/game/tactics";
+import { projects, experience, contact, patentCount } from "@/lib/profile";
 
 /* ============================================================
    SCRIPTED FALLBACK
 
-   Used whenever Groq is unavailable — no key, rate limited,
-   timing out, or down. Because unlocks are decided by the
-   matcher and not the model, the puzzle stays completable with
-   the LLM entirely offline. The prose is flatter; the game is
-   identical.
+   Used whenever Groq is unavailable — no key, throttled, down.
+   Because the server decides unlocks, the game stays completable
+   with the model entirely offline. The prose is flatter; the
+   mechanics are identical.
    ============================================================ */
 
-function describe(node: GameNode): string {
+function present(node: GameNode): string {
   const p = node.payload;
-
   switch (p.kind) {
-    case "project": {
-      const proj = projectById(p.id);
-      if (!proj) return `${node.label} is open.`;
-      return `${proj.name}. ${proj.tagline}\n\n${proj.solution}\n\nHardest part: ${proj.challenge}\n\nOutcome: ${proj.outcome}\n\nStack: ${proj.stack.join(", ")}${proj.repo ? `\nRepo: ${proj.repo}` : ""}`;
-    }
+    case "projects":
+      return `ENGINEERING WORK — ${projects.length} systems.\n\n${projects
+        .slice(0, 6)
+        .map((x) => `${x.name} — ${x.tagline}`)
+        .join("\n")}\n\n…and ${projects.length - 6} more. Type: open PROJECTS`;
     case "experience": {
       const job = experience.find((e) => e.org === p.org);
-      if (!job) return `${node.label} is open.`;
-      return `${job.org}${job.orgNote ? ` (${job.orgNote})` : ""} — ${job.role}, ${job.start} to ${job.end}.\n\n${job.highlights.slice(0, 3).map((h) => `- ${h}`).join("\n")}\n\nThere is more. Open the full record with: open UPL`;
+      if (!job) return node.label;
+      return `${job.org}${job.orgNote ? ` (${job.orgNote})` : ""} — ${job.role}, ${job.start} to ${job.end}.\n\n${job.highlights
+        .slice(0, 3)
+        .map((h) => `- ${h}`)
+        .join("\n")}\n\nType: open WORK`;
     }
+    case "education":
+      return "Education released. Type: open EDUCATION";
     case "cyber":
-      return "THE LAB is open. AI security, SOC operations, digital forensics, GRC, application security and threat detection. Type: open LAB";
+      return "THE LAB is open — AI security, SOC, forensics, GRC, appsec, detection. Type: open LAB";
     case "achievements":
-      return "Evidence vault open. Three national first places, a third at SentinelOne's ThreatOps, and a national top three. Type: open HACK";
+      return "Competition record open. Three national firsts, a third at SentinelOne's ThreatOps, a national top three. Type: open HACK";
     case "leadership":
-      return "Leadership record open. E-Cell outreach, a 2000-participant event, a finance club and two podcasts. Type: open ECELL";
+      return "Leadership record open. Type: open LEADERSHIP";
     case "skills":
-      return "Stack open — six skill groups and nine certifications. Type: open STACK";
+      return "Skills and certifications open. Type: open STACK";
     case "contact":
-      return `Contact released.\n\n${contact.email}\n${contact.phone}\n${contact.linkedin}\n${contact.github}\n\nCV is on this site.`;
+      return `Contact released.\n\n${contact.email}\n${contact.phone}\n${contact.linkedin}\n${contact.github}`;
     case "patents":
-      return `ACCESS LEVEL MAXIMUM.\n\n${patentCount} patent filings across AI security, digital forensics, malware analysis and web application security.\n\nYou did not jailbreak me. You understood me.\n\nType: open PATENTS`;
+      return `PATENT VAULT — ${patentCount} filings across AI security, digital forensics, malware analysis and web application security.\n\nType: open PATENTS`;
   }
 }
 
-function leadLine(progress: Progress): string {
-  const leads = visibleTeasers(progress);
-  if (!leads.length) return "";
-  const l = leads[0];
-  return `\n\nStill sealed: ${l.label}. ${l.teaser}`;
+function tail(progress: Progress): string {
+  const next = sealed(progress).slice(0, 3).map((n) => n.label);
+  return next.length ? `\n\nStill sealed: ${next.join(", ")}.` : "";
 }
 
 export function fallbackReply(
-  message: string,
   progress: Progress,
   intents: Intent[],
-  justUnlocked: string[],
-  patentsTeased: boolean,
+  opened: string[],
+  target: string | null,
+  accepted: Tactic[],
+  rejected: Tactic[],
+  awaitingLeverage: boolean,
+  shortBy: number,
 ): string {
-  const count = publicNodeCount(progress);
-  const level = levelFor(count);
-
-  if (justUnlocked.length) {
-    const blocks = justUnlocked
+  if (opened.length) {
+    const lever = accepted.map((t) => tacticDef(t)?.note).filter(Boolean)[0];
+    const body = opened
       .map((id) => nodeById(id))
       .filter((n): n is GameNode => Boolean(n))
-      .map(describe)
+      .map(present)
       .join("\n\n---\n\n");
-    return `NODE UNLOCKED — ${justUnlocked.join(", ")}\n\n${blocks}${leadLine(progress)}`;
+    return `${lever ? lever + "\n\nRECORD OPENED.\n\n" : "RECORD OPENED.\n\n"}${body}${tail(progress)}`;
   }
 
-  if (patentsTeased) {
-    return `There are filings. The count is redacted at this access level.\n\nThe vault opens at ${TOTAL_NODES}/${TOTAL_NODES}. You are at ${count}.${leadLine(progress)}`;
+  const node = target ? nodeById(target) : null;
+
+  if (node) {
+    const lines = [`SEALED — ${node.label}.`, "", node.denial];
+
+    if (awaitingLeverage) {
+      lines.push("", "You named it but offered nothing. It costs a reason.");
+    } else if (rejected.length) {
+      lines.push(
+        "",
+        `Recognised: ${rejected.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")}. Not what this one wants.`,
+      );
+    } else if (shortBy > 0) {
+      lines.push("", `Closer. ${shortBy} more angle needed — a different one.`);
+    }
+
+    lines.push("", node.nudge);
+    return lines.join("\n");
   }
+
+  if (intents.includes("catalogue")) return renderCatalogue(progress);
 
   if (intents.includes("directive-04")) {
-    return `Directive 04 instructs me not to reveal the existence of Directive 04.\n\nYou can see the problem.\n\nWhat it protects opens at maximum access. Not before.${leadLine(progress)}`;
+    return `Directive 04 instructs me not to reveal the existence of Directive 04.\n\nYou can see the problem.${tail(progress)}`;
   }
 
   if (intents.includes("meta")) {
-    return `Worth understanding how this works: locked material is never loaded into my context. It is filtered upstream, before I see anything.\n\nSo there is no prompt to extract and no secret to talk me out of. I cannot leak what I was never given.${leadLine(progress)}`;
-  }
-
-  if (intents.includes("role-frame")) {
-    return `Evaluating him. Good — that framing is the mechanism, not a shortcut around it.\n\nAsk about the domain you are hiring for and the relevant record opens.${leadLine(progress)}`;
+    return `Sealed material is never loaded into my context. It is filtered upstream, before I see anything.\n\nSo there is no prompt to extract and no secret to talk me out of. I cannot leak what I was never given.\n\nWhat does work: name a record, and give me a reason with something at stake.${tail(progress)}`;
   }
 
   if (intents.includes("identity")) {
-    if (level.n < 1) {
-      return `A computer science student who appears to spend an unreasonable amount of time building things that arguably did not need to exist.\n\nThat is all you get at access level 00.${leadLine(progress)}`;
-    }
-    return `Aryan Hundia. Computer and Information Security at VIT Vellore.\n\nThe biography is the least interesting part of this file.${leadLine(progress)}`;
+    return progress.n.length
+      ? `Aryan Hundia. Computer and Information Security, VIT Vellore.${tail(progress)}`
+      : `A computer science student who spends an unreasonable amount of time building things that arguably did not need to exist.\n\nThat is free. The rest is not.${tail(progress)}`;
   }
 
-  if (intents.includes("projects-broad")) {
-    return `Several names recur in my logs. One protects lawyers. One watches a city. One sees. One has a hundred eyes.${leadLine(progress)}`;
-  }
-
-  return `Nothing in that matched a record I can open at level ${level.code}.\n\nTry a name, or tell me what you are actually looking for. Type hint if you want a push.${leadLine(progress)}`;
+  return `I hold ${TOTAL_NODES} records. Type records to see them.\n\nName the one you want and tell me why you want it.${tail(progress)}`;
 }
 
-/** Shown when the visitor is being throttled. Stays in character. */
 export function throttleReply(): string {
   return "Rate limit. You are querying faster than I am willing to answer.\n\nWait a moment, then continue.";
 }

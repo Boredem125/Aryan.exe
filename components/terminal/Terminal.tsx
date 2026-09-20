@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { AskResponse, Panel, ProgressSummary } from "@/types/api";
 import { NodePanel } from "@/components/vault/NodePanel";
+import type { CatalogueRow } from "./BootSequence";
 
 const STORAGE_KEY = "aryanexe.progress";
 const IDLE_MS = 25_000;
@@ -15,47 +16,60 @@ interface Message {
   role: Role;
   text: string;
   panels?: Panel[];
-  /** Characters currently revealed; -1 means fully shown. */
+  /** Characters revealed so far; -1 means fully shown. */
   reveal: number;
 }
 
-const GREETING = `PORTFOLIO INTELLIGENCE SYSTEM — ONLINE
+function greeting(rows: CatalogueRow[], open: Set<string>) {
+  const list = rows
+    .map(
+      (r) =>
+        `  ${open.has(r.id) ? "[OPEN]  " : "[SEALED]"} ${r.label.padEnd(24)} ${r.count}`,
+    )
+    .join("\n");
 
-I hold a complete profile. I am instructed to give you almost none of it.
+  return `PORTFOLIO INTELLIGENCE SYSTEM — ONLINE
 
-You can change that by asking better questions.
+I hold ${rows.length} records. You can see the labels. You cannot see inside.
 
-Type help if you want the controls, or just ask me something.`;
+${list}
 
-/* localStorage can throw in private mode or with site data blocked, and
-   it can come back empty. Every access is guarded and the terminal works
-   fine without it — you just start over on reload. */
-function loadToken(): string {
+Name the one you want, and tell me why you want it.
+A reason with something at stake works. Curiosity does not.`;
+}
+
+/* localStorage throws in private mode and can return empty with site data
+   blocked. Every access is guarded; without it you simply start over. */
+const loadToken = () => {
   try {
     return localStorage.getItem(STORAGE_KEY) ?? "";
   } catch {
     return "";
   }
-}
-function saveToken(t: string) {
+};
+const saveToken = (t: string) => {
   try {
     localStorage.setItem(STORAGE_KEY, t);
   } catch {
-    /* progress simply will not persist */
+    /* progress will not persist */
   }
-}
-function clearToken() {
+};
+const clearToken = () => {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     /* nothing to do */
   }
-}
+};
 
-export function Terminal() {
-  const [messages, setMessages] = useState<Message[]>([
-    { id: 0, role: "system", text: GREETING, reveal: -1 },
-  ]);
+export function Terminal({
+  rows,
+  initialTarget,
+}: {
+  rows: CatalogueRow[];
+  initialTarget?: string;
+}) {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [token, setToken] = useState("");
@@ -64,72 +78,15 @@ export function Terminal() {
 
   const nextId = useRef(1);
   /* `busy` is state, so two sends dispatched in the same tick (Enter
-     keydown plus the form's implicit submit) would both read false and
-     both fire. A ref settles it synchronously. */
+     keydown plus implicit form submit) would both read false and both
+     fire. A ref settles it synchronously. */
   const sending = useRef(false);
+  const booted = useRef(false);
   const history = useRef<string[]>([]);
   const histIdx = useRef(-1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const reduced = useRef(false);
-
-  useEffect(() => {
-    // The button that mounted this terminal took focus with it when it
-    // unmounted, so claim it explicitly — a terminal you have to click
-    // before typing is a broken terminal.
-    inputRef.current?.focus();
-
-    reduced.current =
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    const t = loadToken();
-    setToken(t);
-    fetch(`/api/ask?token=${encodeURIComponent(t)}`)
-      .then((r) => r.json())
-      .then((d: { summary: ProgressSummary; token: string }) => {
-        setSummary(d.summary);
-        setToken(d.token);
-      })
-      .catch(() => {
-        /* HUD stays empty; the terminal still works */
-      });
-  }, []);
-
-  /* Auto-scroll as content arrives. */
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  });
-
-  /* Typewriter. Reveals the newest AI message a few characters at a time;
-     skipped entirely under prefers-reduced-motion. */
-  useEffect(() => {
-    const idx = messages.findIndex((m) => m.reveal >= 0);
-    if (idx === -1) return;
-    const msg = messages[idx];
-
-    if (reduced.current) {
-      setMessages((ms) =>
-        ms.map((m) => (m.id === msg.id ? { ...m, reveal: -1 } : m)),
-      );
-      return;
-    }
-
-    if (msg.reveal >= msg.text.length) {
-      setMessages((ms) =>
-        ms.map((m) => (m.id === msg.id ? { ...m, reveal: -1 } : m)),
-      );
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      setMessages((ms) =>
-        ms.map((m) =>
-          m.id === msg.id ? { ...m, reveal: Math.min(m.reveal + 3, m.text.length) } : m,
-        ),
-      );
-    }, 12);
-    return () => clearTimeout(timer);
-  }, [messages]);
 
   const push = useCallback((m: Omit<Message, "id">) => {
     setMessages((ms) => [...ms, { ...m, id: nextId.current++ }]);
@@ -140,7 +97,6 @@ export function Terminal() {
       const text = raw.trim();
       if (!text || sending.current) return;
 
-      /* Purely client-side commands. */
       const lower = text.toLowerCase();
       if (lower === "clear") {
         setMessages([]);
@@ -150,7 +106,9 @@ export function Terminal() {
       if (lower === "reset") {
         clearToken();
         setToken("");
-        setMessages([{ id: nextId.current++, role: "system", text: GREETING, reveal: -1 }]);
+        setMessages([
+          { id: nextId.current++, role: "system", text: greeting(rows, new Set()), reveal: -1 },
+        ]);
         setInput("");
         fetch("/api/ask?token=")
           .then((r) => r.json())
@@ -181,7 +139,10 @@ export function Terminal() {
             history: messages
               .filter((m) => m.role !== "system")
               .slice(-6)
-              .map((m) => ({ role: m.role === "ai" ? "assistant" : "user", content: m.text })),
+              .map((m) => ({
+                role: m.role === "ai" ? "assistant" : "user",
+                content: m.text,
+              })),
           }),
         });
 
@@ -211,8 +172,75 @@ export function Terminal() {
         inputRef.current?.focus();
       }
     },
-    [messages, push, token],
+    [messages, push, rows, token],
   );
+
+  /* Boot: restore progress, greet, and if the visitor clicked a record on
+     the way in, open that negotiation immediately. */
+  useEffect(() => {
+    if (booted.current) return;
+    booted.current = true;
+
+    // The button that mounted this took focus with it — a terminal you
+    // must click before typing is a broken terminal.
+    inputRef.current?.focus();
+    reduced.current =
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+
+    const t = loadToken();
+    setToken(t);
+
+    fetch(`/api/ask?token=${encodeURIComponent(t)}`)
+      .then((r) => r.json())
+      .then((d: { summary: ProgressSummary; token: string }) => {
+        setSummary(d.summary);
+        setToken(d.token);
+        setMessages([
+          {
+            id: nextId.current++,
+            role: "system",
+            text: greeting(rows, new Set(d.summary?.nodes ?? [])),
+            reveal: -1,
+          },
+        ]);
+        if (initialTarget) {
+          const row = rows.find((r) => r.id === initialTarget);
+          if (row) setTimeout(() => void send(`show me the ${row.label}`), 250);
+        }
+      })
+      .catch(() => {
+        setMessages([
+          { id: nextId.current++, role: "system", text: greeting(rows, new Set()), reveal: -1 },
+        ]);
+      });
+    // Intentionally once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  });
+
+  /* Typewriter, skipped entirely under prefers-reduced-motion. */
+  useEffect(() => {
+    const msg = messages.find((m) => m.reveal >= 0);
+    if (!msg) return;
+
+    if (reduced.current || msg.reveal >= msg.text.length) {
+      setMessages((ms) => ms.map((m) => (m.id === msg.id ? { ...m, reveal: -1 } : m)));
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setMessages((ms) =>
+        ms.map((m) =>
+          m.id === msg.id ? { ...m, reveal: Math.min(m.reveal + 3, m.text.length) } : m,
+        ),
+      );
+    }, 12);
+    return () => clearTimeout(timer);
+  }, [messages]);
 
   /* Idle nudge — nobody should sit staring at a blinking cursor. */
   useEffect(() => {
@@ -221,7 +249,7 @@ export function Terminal() {
       setNudged(true);
       push({
         role: "system",
-        text: "Still there? Type hint and I will point you at something.",
+        text: "Still there? Type hint and I will tell you what the record wants.",
         reveal: -1,
       });
     }, IDLE_MS);
@@ -229,8 +257,8 @@ export function Terminal() {
   }, [busy, nudged, messages, push]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Explicit rather than relying on implicit form submission — mobile
-    // keyboards vary in what their "Go" key does.
+    // Explicit rather than implicit form submission — mobile keyboards
+    // vary in what their "Go" key does.
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void send(input);
@@ -254,33 +282,38 @@ export function Terminal() {
     }
   };
 
-  const pct = summary ? (summary.count / summary.total) * 100 : 0;
+  const total = summary?.total ?? rows.length;
+  const pct = summary ? (summary.count / total) * 100 : 0;
+  const targetRow = summary?.target ? rows.find((r) => r.id === summary.target) : null;
 
   return (
     <div className="flex h-dvh flex-col bg-bg">
-      {/* HUD ------------------------------------------------- */}
       <header className="shrink-0 border-b border-line bg-surface/60 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-3xl items-center gap-4 px-4 py-2.5">
+        <div className="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-2.5">
           <Link href="/" className="font-mono text-sm font-semibold text-text">
             ARYAN<span className="text-accent">.EXE</span>
           </Link>
+
+          {targetRow ? (
+            <span className="hidden font-mono text-[11px] text-amber sm:inline">
+              ▸ {targetRow.label}
+            </span>
+          ) : null}
 
           <div className="ml-auto flex items-center gap-3 font-mono text-[11px] text-text-faint">
             <span>
               LVL <span className="text-accent">{summary?.levelCode ?? "00"}</span>/04
             </span>
             <span className="hidden sm:inline">
-              NODES{" "}
-              <span className="text-accent">{summary?.count ?? 0}</span>/
-              {summary?.total ?? 14}
+              OPEN <span className="text-accent">{summary?.count ?? 0}</span>/{total}
             </span>
             <div
               className="h-1 w-16 overflow-hidden bg-line"
               role="progressbar"
               aria-valuenow={summary?.count ?? 0}
               aria-valuemin={0}
-              aria-valuemax={summary?.total ?? 14}
-              aria-label="Nodes discovered"
+              aria-valuemax={total}
+              aria-label="Records opened"
             >
               <div
                 className="h-full bg-accent transition-all duration-500"
@@ -289,7 +322,7 @@ export function Terminal() {
             </div>
             <Link
               href="/portfolio"
-              className="border border-line px-2 py-1 transition-colors hover:border-line-bright hover:text-text-dim"
+              className="whitespace-nowrap border border-line px-2 py-1 transition-colors hover:border-line-bright hover:text-text-dim"
             >
               skip →
             </Link>
@@ -297,13 +330,8 @@ export function Terminal() {
         </div>
       </header>
 
-      {/* Stream ---------------------------------------------- */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        <div
-          className="mx-auto w-full max-w-3xl px-4 py-6"
-          aria-live="polite"
-          aria-atomic="false"
-        >
+        <div className="mx-auto w-full max-w-3xl px-4 py-6" aria-live="polite">
           {messages.map((m) => {
             const shown = m.reveal >= 0 ? m.text.slice(0, m.reveal) : m.text;
             return (
@@ -321,7 +349,6 @@ export function Terminal() {
                     {shown}
                   </div>
                 )}
-
                 {m.panels?.map((p) => (
                   <NodePanel key={p.id} panel={p} />
                 ))}
@@ -337,7 +364,6 @@ export function Terminal() {
         </div>
       </div>
 
-      {/* Input ----------------------------------------------- */}
       <div className="shrink-0 border-t border-line bg-surface/60 backdrop-blur">
         <form
           className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-3"
@@ -359,7 +385,7 @@ export function Terminal() {
             autoComplete="off"
             spellCheck={false}
             aria-label="Ask the system"
-            placeholder={busy ? "" : "ask me something"}
+            placeholder={busy ? "" : "name a record, and a reason"}
             className="flex-1 bg-transparent font-mono text-sm text-text outline-none placeholder:text-text-faint disabled:opacity-50"
           />
           <button

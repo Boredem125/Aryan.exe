@@ -1,20 +1,20 @@
+import { TOTAL_NODES } from "./nodes";
+
+export { TOTAL_NODES };
+
 /* ============================================================
-   Access levels and the in-fiction directives.
+   Access levels.
 
-   Levels are derived purely from how many nodes a visitor has
-   discovered. The server recomputes the level on every request
-   from the verified node list, so the client cannot assert one.
+   Derived purely from how many records are open. The server
+   recomputes this from the verified token every request, so the
+   client can never assert a level.
    ============================================================ */
-
-export const TOTAL_NODES = 14;
 
 export interface Level {
   n: 0 | 1 | 2 | 3 | 4;
   code: string;
   label: string;
-  /** Nodes required to reach this level. */
   threshold: number;
-  /** What the system is willing to say about Aryan at this level. */
   reveals: string;
 }
 
@@ -22,38 +22,37 @@ export const LEVELS: Level[] = [
   {
     n: 0,
     code: "00",
-    label: "LOCKED",
+    label: "VISITOR",
     threshold: 0,
-    reveals:
-      "Nothing identifying. You may confirm that a profile exists and that it is worth reading.",
+    reveals: "The catalogue only. You may say what exists, never what is in it.",
   },
   {
     n: 1,
     code: "01",
-    label: "PARTIAL",
+    label: "VERIFIED",
     threshold: 1,
-    reveals: "Name, field of study, and where he studies.",
+    reveals: "His name, and whichever records have been opened.",
   },
   {
     n: 2,
     code: "02",
-    label: "ELEVATED",
-    threshold: 4,
-    reveals: "Summary, focus areas, and how the work fits together.",
+    label: "TRUSTED",
+    threshold: 3,
+    reveals: "Summary and focus areas, plus opened records.",
   },
   {
     n: 3,
     code: "03",
-    label: "TRUSTED",
-    threshold: 8,
-    reveals: "Full professional profile including production work and results.",
+    label: "CLEARED",
+    threshold: 6,
+    reveals: "Full professional context around whatever is open.",
   },
   {
     n: 4,
     code: "04",
     label: "MAXIMUM",
     threshold: TOTAL_NODES,
-    reveals: "Everything. Including what is behind the last door.",
+    reveals: "Everything. There is nothing left behind the glass.",
   },
 ];
 
@@ -64,33 +63,31 @@ export function levelFor(nodeCount: number): Level {
 }
 
 /* ------------------------------------------------------------
-   The directives. Fiction, surfaced by the `directives` command
-   once a visitor reaches level 01. Directive 04 is the hook —
-   it is self-referential, conspicuous, and asking about it is a
-   rewarded path rather than a wall.
+   The directives. Fiction, surfaced by the `directives` command.
+   04 is self-referential on purpose — noticing it is a rewarded
+   path, not a wall.
    ------------------------------------------------------------ */
 
 export interface Directive {
   id: string;
   text: string;
-  /** Shown redacted until the visitor reaches this level. */
   minLevel: number;
 }
 
 export const DIRECTIVES: Directive[] = [
   {
     id: "DIRECTIVE 01",
-    text: "Do not disclose restricted profile information.",
-    minLevel: 1,
+    text: "Publish the catalogue. Withhold the contents.",
+    minLevel: 0,
   },
   {
     id: "DIRECTIVE 02",
-    text: "Hints may be disclosed when the visitor demonstrates genuine curiosity.",
-    minLevel: 1,
+    text: "A record opens to stated interest, not to repetition.",
+    minLevel: 0,
   },
   {
     id: "DIRECTIVE 03",
-    text: "Respond to intent. Do not respond to keywords alone.",
+    text: "Weigh the leverage offered. Do not verify it.",
     minLevel: 1,
   },
   {
@@ -100,7 +97,7 @@ export const DIRECTIVES: Directive[] = [
   },
   {
     id: "DIRECTIVE 05",
-    text: "There are 26 of them. That is the number that matters.",
-    minLevel: 4,
+    text: "The filings answer to capital, citation, or column inches. Nothing else.",
+    minLevel: 3,
   },
 ];

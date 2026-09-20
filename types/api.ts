@@ -7,6 +7,7 @@ export interface PanelSection {
   body?: string;
   items?: string[];
   tags?: string[];
+  link?: { label: string; href: string };
 }
 
 export interface Panel {
@@ -22,16 +23,17 @@ export interface ProgressSummary {
   nodes: string[];
   count: number;
   total: number;
+  target: string | null;
+  spent: string[];
   level: number;
   levelCode: string;
   levelLabel: string;
   complete: boolean;
-  patentsUnlocked: boolean;
 }
 
 export interface AskResponse {
   reply: string;
-  unlocks: string[];
+  opened: string[];
   panels: Panel[];
   token: string;
   summary: ProgressSummary;

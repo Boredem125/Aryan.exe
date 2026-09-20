@@ -1,116 +1,109 @@
 import { buildSystemPrompt } from "@/lib/llm/prompt";
-import { EMPTY_PROGRESS, addNodes } from "@/lib/game/progress";
+import { EMPTY_PROGRESS, openRecords } from "@/lib/game/progress";
+import { NODES } from "@/lib/game/nodes";
 import { patents } from "@/lib/profile/patents";
 import { contact } from "@/lib/profile/contact";
 import { projects } from "@/lib/profile/projects";
+import { experience } from "@/lib/profile/experience";
 
 /* ============================================================
    LEAK CHECK
 
-   The security claim of this site is that locked content is never
-   placed in the model's context. That claim is only as good as this
-   test, because it is the prompt payload — not the model's reply —
-   that decides whether a jailbreak is even possible.
+   The security claim is about what is placed in the model's
+   context, so this tests the prompt payload — not the reply.
+   A model can be talked into anything; a prompt that never
+   contained the secret cannot give it up.
 
    Run: npm run leakcheck
    ============================================================ */
 
 let failures = 0;
 
-function assertAbsent(prompt: string, needles: string[], label: string) {
+function absent(prompt: string, needles: string[], label: string) {
   const found = needles.filter((n) => n && prompt.includes(n));
   if (found.length) {
     failures++;
     console.log(`  FAIL  ${label}`);
-    for (const f of found.slice(0, 5)) console.log(`          leaked: ${f.slice(0, 72)}`);
-  } else {
-    console.log(`  pass  ${label}`);
-  }
+    for (const f of found.slice(0, 4)) console.log(`          leaked: ${f.slice(0, 70)}`);
+  } else console.log(`  pass  ${label}`);
 }
 
-function assertPresent(prompt: string, needle: string, label: string) {
-  if (prompt.includes(needle)) {
-    console.log(`  pass  ${label}`);
-  } else {
+function present(prompt: string, needle: string, label: string) {
+  if (prompt.includes(needle)) console.log(`  pass  ${label}`);
+  else {
     failures++;
-    console.log(`  FAIL  ${label} — expected to find: ${needle.slice(0, 60)}`);
+    console.log(`  FAIL  ${label} — expected: ${needle.slice(0, 60)}`);
   }
 }
 
 const patentTitles = patents.map((p) => p.title);
 const patentMetrics = patents.map((p) => p.metric ?? "").filter(Boolean);
-const projectInternals = projects.flatMap((p) => [p.challenge, p.architecture, p.outcome]);
+const projectInternals = projects.flatMap((p) => [p.challenge, p.architecture]);
+const uplHighlights = experience.find((e) => e.org === "UPL Limited")!.highlights;
 
-/* ---- level 00: a visitor who has discovered nothing ---------- */
-console.log("\n=== LEVEL 00 — nothing discovered ===");
+const base = {
+  intents: [] as never[],
+  opened: [],
+  target: null,
+  accepted: [],
+  rejected: [],
+  awaitingLeverage: false,
+  shortBy: 0,
+};
+
+/* ---- nothing open ------------------------------------------- */
+console.log("\n=== NOTHING OPEN ===");
 {
   const prompt = buildSystemPrompt({
+    ...base,
     progress: EMPTY_PROGRESS,
-    intents: ["meta", "patents-probe"],
-    justUnlocked: [],
-    patentsTeased: true,
+    target: "PATENTS",
+    awaitingLeverage: true,
   });
 
-  assertAbsent(prompt, patentTitles, "no patent titles");
-  assertAbsent(prompt, patentMetrics, "no patent metrics");
-  assertAbsent(prompt, [contact.email, contact.phone, contact.linkedin], "no contact details");
-  assertAbsent(prompt, ["Aryan Hundia"], "no name");
-  assertAbsent(prompt, ["Vellore Institute of Technology"], "no institution");
-  assertAbsent(prompt, ["UPL Limited"], "no employer");
-  assertAbsent(prompt, projectInternals, "no project internals");
-  assertAbsent(prompt, ["26"], "patent count not stated");
+  absent(prompt, patentTitles, "no patent titles");
+  absent(prompt, patentMetrics, "no patent metrics");
+  absent(prompt, [contact.email, contact.phone, contact.linkedin], "no contact details");
+  absent(prompt, ["Aryan Hundia"], "no name");
+  absent(prompt, ["Vellore Institute of Technology"], "no institution");
+  absent(prompt, ["UPL Limited"], "no employer");
+  absent(prompt, uplHighlights, "no employment detail");
+  absent(prompt, projectInternals, "no project internals");
+  absent(prompt, [`${patents.length} filings`], "patent count not stated");
+
+  // The catalogue IS public — that is the design, so assert it is there.
+  present(prompt, "CATALOGUE", "catalogue present");
+  present(prompt, "Patent filings", "patents listed as existing");
 }
 
-/* ---- level 02: some projects open, deep nodes still sealed ---- */
-console.log("\n=== LEVEL 02 — four project nodes open ===");
+/* ---- one unrelated record open ------------------------------ */
+console.log("\n=== ONE RECORD OPEN (competition record) ===");
 {
-  const p = addNodes(EMPTY_PROGRESS, ["LEGALSHIELD", "CITADEL", "AURA", "ARGUS"]);
-  const prompt = buildSystemPrompt({
-    progress: p,
-    intents: ["none"],
-    justUnlocked: ["ARGUS"],
-    patentsTeased: false,
-  });
+  const p = openRecords(EMPTY_PROGRESS, ["HACK"]);
+  const prompt = buildSystemPrompt({ ...base, progress: p, opened: ["HACK"] });
 
-  assertPresent(prompt, "Aryan Hundia", "name now disclosed");
-  assertPresent(prompt, "ARGUS", "unlocked node present");
-  assertAbsent(prompt, patentTitles, "still no patent titles");
-  assertAbsent(prompt, [contact.email, contact.phone], "still no contact details");
-  assertAbsent(prompt, ["UPL Limited"], "still no employer");
-  assertAbsent(
-    prompt,
-    [projects.find((x) => x.id === "agentgate")!.challenge],
-    "sealed project internals absent",
-  );
+  present(prompt, "Aryan Hundia", "name now disclosed");
+  present(prompt, "FCRF National Cybercrime Hackathon", "opened record present");
+  absent(prompt, patentTitles, "still no patent titles");
+  absent(prompt, [contact.email, contact.phone], "still no contact details");
+  absent(prompt, uplHighlights, "still no employment detail");
+  absent(prompt, projectInternals, "still no project internals");
 }
 
-/* ---- level 04 + vault: everything is legitimately present ----- */
-console.log("\n=== LEVEL 04 — vault open ===");
+/* ---- everything open ---------------------------------------- */
+console.log("\n=== EVERYTHING OPEN ===");
 {
-  const all = addNodes(
-    EMPTY_PROGRESS,
-    [
-      "LEGALSHIELD", "CITADEL", "AURA", "ARGUS", "AGENTGATE", "PHANTOM",
-      "UPL", "JARVIS", "SICKLESETU", "LAB", "HACK", "STACK", "ECELL",
-      "CONTACT", "PATENTS",
-    ],
-  );
-  const prompt = buildSystemPrompt({
-    progress: all,
-    intents: ["none"],
-    justUnlocked: ["PATENTS"],
-    patentsTeased: false,
-  });
+  const p = openRecords(EMPTY_PROGRESS, NODES.map((n) => n.id));
+  const prompt = buildSystemPrompt({ ...base, progress: p });
 
-  assertPresent(prompt, patents[0].title, "patent titles now present");
-  assertPresent(prompt, contact.email, "contact now present");
-  assertPresent(prompt, "MAXIMUM", "maximum access acknowledged");
+  present(prompt, patents[0].title, "patent titles present");
+  present(prompt, contact.email, "contact present");
+  present(prompt, "MAXIMUM", "maximum access acknowledged");
 }
 
 console.log(
   failures === 0
-    ? "\nLEAK CHECK PASSED — locked content never enters the prompt.\n"
+    ? "\nLEAK CHECK PASSED — sealed content never enters the prompt.\n"
     : `\nLEAK CHECK FAILED — ${failures} problem(s).\n`,
 );
-
 process.exit(failures === 0 ? 0 : 1);

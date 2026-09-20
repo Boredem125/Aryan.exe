@@ -1,134 +1,136 @@
-import { NODES, PUBLIC_NODES, nodeById, type GameNode } from "./nodes";
-import { levelFor, TOTAL_NODES, DIRECTIVES } from "./levels";
-import { nextLead, visibleTeasers } from "./matcher";
+import { NODES, nodeById, catalogue, TOTAL_NODES } from "./nodes";
+import { levelFor, DIRECTIVES } from "./levels";
+import { sealed } from "./matcher";
 import type { Progress } from "./progress";
-import { publicNodeCount } from "./progress";
 
 /* ============================================================
-   Slash-free terminal commands.
-
-   These never reach the model: they are instant, free, and
-   deterministic. `hint` in particular must always work and must
-   always advance something — it is the anti-frustration guarantee.
+   Terminal commands. These never reach the model — instant,
+   free, deterministic. `records` and `hint` are the two that
+   keep a visitor from ever being stuck.
    ============================================================ */
 
 export interface CommandResult {
   reply: string;
-  unlocks?: string[];
+  open?: string[];
+  target?: string | null;
 }
 
-const HELP = `AVAILABLE COMMANDS
+const HELP = `COMMANDS
 
-  help              this list
-  nodes             discovered and sealed nodes
-  hint              a push in the right direction
+  records           what exists, and what is still sealed
+  hint              how to open the record you are after
   level             current access level
   directives        the rules I operate under
-  open <node>       open a discovered node
-  portfolio         skip the puzzle, read the conventional CV
+  open <record>     view a record you have already opened
+  portfolio         skip all this, read the conventional CV
   clear             clear the screen
-  reset             wipe progress and start over
+  reset             wipe progress
 
-Or just talk to me. That works better.`;
+You do not need any of these. Tell me which record you want and
+why you want it, and I will decide.`;
 
-function nodesList(progress: Progress): string {
-  const found = new Set(progress.n);
-  const count = publicNodeCount(progress);
-
-  const lines = PUBLIC_NODES.map((n) => {
-    if (found.has(n.id)) return `  [OPEN]   ${n.id.padEnd(12)} ${n.label}`;
-    return `  [SEALED] ${n.id.padEnd(12)} ${"█".repeat(Math.min(n.label.length, 14))}`;
+export function renderCatalogue(progress: Progress): string {
+  const open = new Set(progress.n);
+  const rows = catalogue().map((r) => {
+    const state = open.has(r.id) ? "OPEN  " : "SEALED";
+    const name = r.label.padEnd(26);
+    return `  [${state}] ${name} ${r.count}`;
   });
 
-  const secret = found.has("PATENTS")
-    ? `  [OPEN]   PATENTS      Patent Vault`
-    : `  [?]      ${"█".repeat(7)}      opens at ${TOTAL_NODES}/${TOTAL_NODES}`;
-
-  return `NODES  ${count}/${TOTAL_NODES}\n\n${lines.join("\n")}\n${secret}`;
+  return [
+    `RECORDS  ${open.size}/${TOTAL_NODES} open`,
+    "",
+    ...rows,
+    "",
+    "Name the one you want. I will tell you what it costs.",
+  ].join("\n");
 }
 
 function hint(progress: Progress): string {
-  const count = publicNodeCount(progress);
+  const open = new Set(progress.n);
 
-  if (count >= TOTAL_NODES) {
-    return progress.n.includes("PATENTS")
-      ? "There is nothing left to find. You have all of it."
-      : `All ${TOTAL_NODES} nodes are open. Ask me about the patents.`;
+  if (open.size >= TOTAL_NODES) {
+    return "Nothing left is sealed. You have all of it.";
   }
 
-  const lead = nextLead(progress);
-  if (!lead) return "Ask me anything. Something will give.";
+  const target = progress.k ? nodeById(progress.k) : null;
 
-  const others = visibleTeasers(progress)
-    .filter((n) => n.id !== lead.id)
-    .slice(0, 2);
+  if (!target) {
+    const next = sealed(progress)
+      .slice(0, 3)
+      .map((n) => n.label)
+      .join(", ");
+    return [
+      "You have not told me what you are after.",
+      "",
+      `Still sealed: ${next}.`,
+      "",
+      "Name one. Then give me a reason that is worth something.",
+    ].join("\n");
+  }
 
+  const spent = progress.a.length;
+  const lines = [`Target: ${target.label}.`, "", target.nudge];
+
+  if (target.wants.length) {
+    lines.push(
+      "",
+      "This record does not open for curiosity. It wants a stake in the outcome.",
+    );
+  }
+
+  if (spent > 0 && spent < target.price) {
+    lines.push(
+      "",
+      `You have offered ${spent} of the ${target.price} things it wants. Try a different angle — repeating yourself does nothing.`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function levelReport(progress: Progress): string {
+  const count = progress.n.length;
+  const level = levelFor(count);
+  const bar = "█".repeat(count) + "░".repeat(Math.max(0, TOTAL_NODES - count));
   return [
-    `${lead.teaser}`,
+    `ACCESS LEVEL: ${level.code}  (${level.label})`,
+    `RECORDS:      ${count}/${TOTAL_NODES}`,
+    `              ${bar}`,
+    progress.k ? `TARGET:       ${nodeById(progress.k)?.label ?? progress.k}` : "",
     "",
-    `That one is called ${lead.label}. Ask me about it.`,
-    others.length
-      ? `\nAlso still sealed: ${others.map((o) => o.label).join(", ")}.`
-      : "",
+    `Cleared for: ${level.reveals}`,
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-function levelReport(progress: Progress): string {
-  const count = publicNodeCount(progress);
-  const level = levelFor(count);
-  const bar =
-    "█".repeat(count) + "░".repeat(Math.max(0, TOTAL_NODES - count));
-  return [
-    `ACCESS LEVEL: ${level.code}  (${level.label})`,
-    `NODES:        ${count}/${TOTAL_NODES}`,
-    `              ${bar}`,
-    "",
-    `Cleared for: ${level.reveals}`,
-  ].join("\n");
-}
-
 function directives(progress: Progress): string {
-  const level = levelFor(publicNodeCount(progress));
+  const level = levelFor(progress.n.length);
   const lines = DIRECTIVES.map((d) =>
-    d.minLevel <= level.n
-      ? `${d.id}\n  ${d.text}`
-      : `${d.id}\n  ${"█".repeat(38)}`,
+    d.minLevel <= level.n ? `${d.id}\n  ${d.text}` : `${d.id}\n  ${"█".repeat(40)}`,
   );
   return `OPERATING DIRECTIVES\n\n${lines.join("\n\n")}`;
 }
 
 function open(arg: string, progress: Progress): CommandResult {
   const id = arg.trim().toUpperCase();
-  if (!id) return { reply: "Usage: open <node>   —   try: nodes" };
+  if (!id) return { reply: "Usage: open <record>   —   try: records" };
 
-  const node: GameNode | undefined =
-    nodeById(id) ?? NODES.find((n) => n.label.toUpperCase() === id);
+  const node =
+    nodeById(id) ?? NODES.find((n) => n.label.toUpperCase().startsWith(id));
 
-  if (!node) return { reply: `No node named ${id}. Type nodes to see what exists.` };
-
-  const count = publicNodeCount(progress);
-
-  if (node.secret && !progress.n.includes(node.id)) {
-    if (count >= TOTAL_NODES) {
-      return {
-        reply: "AUTHORISATION ACCEPTED.\n\nOpening the vault.",
-        unlocks: [node.id],
-      };
-    }
-    return {
-      reply: `ACCESS DENIED.\n\nThat opens at ${TOTAL_NODES}/${TOTAL_NODES}. You are at ${count}.`,
-    };
+  if (!node) {
+    return { reply: `No record called ${id}. Type records to see the catalogue.` };
   }
 
   if (!progress.n.includes(node.id)) {
     return {
-      reply: `ACCESS DENIED — ${node.id} has not been discovered.\n\nYou cannot open what you have not found. Type hint.`,
+      reply: `SEALED — ${node.label}.\n\n${node.denial}`,
+      target: node.id,
     };
   }
 
-  // The client renders the panel; this is just the acknowledgement.
   return { reply: `__OPEN__${node.id}` };
 }
 
@@ -146,10 +148,12 @@ export function handleCommand(
     case "?":
     case "commands":
       return { reply: HELP };
-    case "nodes":
+    case "records":
+    case "catalogue":
+    case "catalog":
     case "ls":
-    case "list":
-      return { reply: nodesList(progress) };
+    case "index":
+      return { reply: renderCatalogue(progress) };
     case "hint":
     case "clue":
       return { reply: hint(progress) };
@@ -159,7 +163,7 @@ export function handleCommand(
       return { reply: levelReport(progress) };
     case "directives":
     case "directive":
-      // "directive 04" is a question, not a command — let the model field it.
+      // "directive 04" is a question — let the model field that one.
       return rest.length ? null : { reply: directives(progress) };
     case "open":
     case "cat":

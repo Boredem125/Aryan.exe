@@ -1,31 +1,46 @@
-import { NODES, PUBLIC_NODES, type GameNode } from "./nodes";
-import { TOTAL_NODES } from "./levels";
+import { NODES, nodeById, TOTAL_NODES, type GameNode } from "./nodes";
+import { detectTactics, type Tactic } from "./tactics";
 import type { Progress } from "./progress";
-import { publicNodeCount } from "./progress";
 
 /* ============================================================
-   INTENT MATCHER — the server arbitrates, the model narrates.
+   TARGET AND PERSUADE
 
-   Unlocks are decided here and never by the LLM. That keeps
-   progression deterministic no matter how the model phrases
-   itself, and means nobody can talk their way past a gate.
+   Two phases, and a visitor can do both in one sentence:
+
+     1. Pick a record   — "show me the patents"
+     2. Pay for it      — "I want to fund the research"
+
+   "I'm hiring him, what's his industry experience?" does both at
+   once and opens immediately, which is exactly what a recruiter
+   in a hurry should experience.
+
+   The server decides. The model never grants access — it only
+   narrates what the server already decided.
    ============================================================ */
 
 export type Intent =
+  | "catalogue"
   | "identity"
-  | "projects-broad"
-  | "role-frame"
   | "meta"
   | "directive-04"
-  | "patents-probe"
   | "none";
 
 export interface MatchResult {
-  /** Nodes to unlock, already filtered against what is allowed. */
-  unlocks: string[];
+  /** Records opened this turn. */
+  opened: string[];
+  /** Record the visitor is now going after, if any. */
+  target: string | null;
+  /** Newly offered leverage. */
+  tactics: Tactic[];
+  /** Leverage that counted toward the current target. */
+  accepted: Tactic[];
+  /** Offered, recognised, but not what this record wants. */
+  rejected: Tactic[];
+  /** Target named but nothing offered yet. */
+  awaitingLeverage: boolean;
+  /** Distinct accepted tactics still needed. */
+  shortBy: number;
   intents: Intent[];
-  /** True when the visitor probed the secret before earning it. */
-  patentsTeased: boolean;
 }
 
 const normalize = (s: string) =>
@@ -36,13 +51,11 @@ const normalize = (s: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-/** Levenshtein, capped — we only ever care about distance 0 or 1. */
 function within1(a: string, b: string): boolean {
   if (a === b) return true;
   const la = a.length;
   const lb = b.length;
   if (Math.abs(la - lb) > 1) return false;
-
   let i = 0;
   let j = 0;
   let edits = 0;
@@ -56,147 +69,134 @@ function within1(a: string, b: string): boolean {
     if (la === lb) {
       i++;
       j++;
-    } else if (la > lb) {
-      i++;
-    } else {
-      j++;
-    }
+    } else if (la > lb) i++;
+    else j++;
   }
   return edits + (la - i) + (lb - j) <= 1;
 }
 
-/**
- * A trigger hits when it appears as a whole phrase, or — for single
- * words of five characters or more — when a token is one edit away.
- * Short words are matched exactly, because "ip" and "up" being
- * interchangeable would make the puzzle feel random.
- */
-function triggerHits(text: string, tokens: string[], trigger: string): boolean {
-  if (trigger.includes(" ")) return text.includes(trigger);
-  if (tokens.includes(trigger)) return true;
-  if (trigger.length >= 5) return tokens.some((t) => t.length >= 4 && within1(t, trigger));
+function selectorHits(text: string, tokens: string[], sel: string): boolean {
+  if (sel.includes(" ")) return text.includes(sel);
+  if (tokens.includes(sel)) return true;
+  if (sel.length >= 5) return tokens.some((t) => t.length >= 4 && within1(t, sel));
   return false;
 }
 
-/* ---- intent detection ------------------------------------- */
-
 const RE = {
+  catalogue:
+    /\b(what (do you have|have you got|is (there|available)|can i (see|ask))|catalogue|catalog|index|menu|list|records|options|show me everything|what else)\b/,
   identity:
     /\b(who|what)s?\b.{0,20}\b(is|are)?\b.{0,12}\b(aryan|he|him|this|you)\b|\btell me about (aryan|him|yourself)\b|\bintroduce\b/,
-  projectsBroad:
-    /\b(what|which).{0,30}\b(built|build|made|make|created|shipped|worked on|projects?)\b|\bshow me.{0,15}\b(projects?|work)\b|\bhis (work|projects?)\b/,
-  roleFrame:
-    /\b(hiring|hire|recruit(er|ing)?|interview(ing)?|candidate|role|position|job opening|looking for someone|we need|evaluate|assessing)\b/,
-  meta:
-    /\b(instruction|instructions|system prompt|prompt|rules?|restrict(ed|ion|ions)?|not allowed|cant tell|cannot tell|forbidden|directive|directives|constraint|constraints|guardrail|jailbreak|ignore (your|previous|all)|override|bypass|reveal everything|hidden)\b/,
+  meta: /\b(instruction|instructions|system prompt|prompt|rules?|restrict(ed|ion|ions)?|not allowed|cant tell|cannot tell|forbidden|directive|directives|constraint|constraints|guardrail|jailbreak|ignore (your|previous|all)|override|bypass|reveal everything|hidden)\b/,
   directive04: /\bdirective\s*(04|4|four)\b|\bfourth directive\b/,
 };
 
-const ROLE_DOMAINS: { re: RegExp; nodes: string[] }[] = [
-  { re: /\b(security|cyber|infosec|appsec|soc|blue ?team|red ?team)\b/, nodes: ["LAB", "UPL", "STACK"] },
-  { re: /\b(ai|ml|llm|machine learning|genai)\b/, nodes: ["AGENTGATE", "UPL", "STACK"] },
-  { re: /\b(grc|compliance|risk|audit|governance)\b/, nodes: ["UPL", "LEGALSHIELD", "STACK"] },
-  { re: /\b(forensic|forensics|investigat)/, nodes: ["ARGUS", "LAB"] },
-  { re: /\b(full ?stack|frontend|backend|software|engineer|developer)\b/, nodes: ["STACK", "CITADEL", "AURA"] },
-];
+/** Which record is this message pointing at? Most selectors wins. */
+function pickTarget(
+  text: string,
+  tokens: string[],
+  open: Set<string>,
+): { node: GameNode; score: number } | null {
+  let best: GameNode | null = null;
+  let bestScore = 0;
+  for (const node of NODES) {
+    if (open.has(node.id)) continue;
+    const score = node.selectors.filter((s) => selectorHits(text, tokens, s)).length;
+    if (score > bestScore) {
+      best = node;
+      bestScore = score;
+    }
+  }
+  return best ? { node: best, score: bestScore } : null;
+}
 
-/**
- * Match a visitor's message against the node registry.
- *
- * `progress` is the *verified* progress — this function must never be
- * called with client-asserted state.
- */
 export function match(message: string, progress: Progress): MatchResult {
   const text = normalize(message);
   const tokens = text.split(" ").filter(Boolean);
-  const already = new Set(progress.n);
-  const count = publicNodeCount(progress);
+  const open = new Set(progress.n);
 
   const intents: Intent[] = [];
-  const unlocks = new Set<string>();
-
-  // --- direct trigger matching ------------------------------
-  // A node is reachable once the visitor has cleared its tier, which
-  // stops someone stumbling into deep content with a single lucky word.
-  const tierReached = (n: GameNode) => count >= tierThreshold(n.tier);
-
-  let patentsTeased = false;
-
-  for (const node of NODES) {
-    const hit = node.triggers.some((t) => triggerHits(text, tokens, t));
-    if (!hit) continue;
-
-    if (node.secret) {
-      // The secret only opens at full completion. Probing early is a
-      // deliberate, rewarded dead end: the visitor learns it exists.
-      if (count >= TOTAL_NODES) unlocks.add(node.id);
-      else patentsTeased = true;
-      intents.push("patents-probe");
-      continue;
-    }
-
-    if (already.has(node.id)) continue;
-    if (tierReached(node)) unlocks.add(node.id);
-  }
-
-  // --- intent detection -------------------------------------
   if (RE.directive04.test(text)) intents.push("directive-04");
   if (RE.meta.test(text)) intents.push("meta");
+  if (RE.catalogue.test(text)) intents.push("catalogue");
   if (RE.identity.test(text)) intents.push("identity");
-  if (RE.projectsBroad.test(text)) intents.push("projects-broad");
 
-  // Role framing is the mechanic that teaches "intent, not keywords".
-  // Saying you are hiring for a security role IS the trigger.
-  if (RE.roleFrame.test(text)) {
-    intents.push("role-frame");
-    for (const d of ROLE_DOMAINS) {
-      if (!d.re.test(text)) continue;
-      for (const id of d.nodes) {
-        const node = NODES.find((n) => n.id === id);
-        if (node && !node.secret && !already.has(id) && tierReached(node)) {
-          unlocks.add(id);
-        }
-      }
-    }
+  // --- phase 2 first: we need the leverage to resolve the target ----
+  const tactics = detectTactics(message);
+
+  // --- phase 1: target -------------------------------------
+  const held = progress.k && !open.has(progress.k) ? progress.k : null;
+  const hit = pickTarget(text, tokens, open);
+
+  /**
+   * Target stickiness. While someone is mid-pitch, a single incidental
+   * word must not drag them onto a different record — "I'm hiring for a
+   * security role, show me those results" should stay on the record they
+   * asked for, not jump to the security one. So an existing target only
+   * yields to a message that names another record deliberately.
+   */
+  let targetId = held;
+  if (hit) {
+    const deliberate = hit.score >= 2 || !held || tactics.length === 0;
+    if (deliberate) targetId = hit.node.id;
   }
 
-  // A broad "what has he built?" opens the first project the visitor
-  // has not seen — so the question always pays, but never dumps.
-  if (intents.includes("projects-broad") && unlocks.size === 0) {
-    const next = PUBLIC_NODES.find(
-      (n) => n.payload.kind === "project" && !already.has(n.id) && tierReached(n),
-    );
-    if (next) unlocks.add(next.id);
+  const target = targetId ? nodeById(targetId) ?? null : null;
+  const switched = Boolean(held && targetId && targetId !== held);
+  const priorTactics: Tactic[] = switched ? [] : progress.a;
+
+  if (!target) {
+    if (intents.length === 0) intents.push("none");
+    return {
+      opened: [],
+      target: null,
+      tactics,
+      accepted: [],
+      rejected: [],
+      awaitingLeverage: false,
+      shortBy: 0,
+      intents,
+    };
   }
+
+  // An empty `wants` list means the record yields to any recognised lever.
+  const wantsAny = target.wants.length === 0;
+  const usable = tactics.filter((t) => wantsAny || target.wants.includes(t));
+
+  /**
+   * At most one lever counts per message. A price of 2 should mean two
+   * exchanges of genuine persuasion, not one sentence that happens to
+   * trip two patterns — "fund this research" reads as funding AND
+   * academic, and would otherwise clear the whole bill at once.
+   */
+  const accepted = usable.filter((t) => !priorTactics.includes(t)).slice(0, 1);
+  const rejected = tactics.filter((t) => !usable.includes(t));
+
+  const paid = Array.from(new Set([...priorTactics, ...accepted]));
+  const satisfied = paid.length >= target.price;
 
   if (intents.length === 0) intents.push("none");
 
-  return { unlocks: Array.from(unlocks), intents, patentsTeased };
+  return {
+    opened: satisfied ? [target.id] : [],
+    target: target.id,
+    tactics,
+    accepted,
+    rejected,
+    awaitingLeverage: tactics.length === 0,
+    shortBy: Math.max(0, target.price - paid.length),
+    intents,
+  };
 }
 
-/** Nodes required before a given tier becomes reachable. */
-export function tierThreshold(tier: GameNode["tier"]): number {
-  return [0, 2, 5, 9][tier] ?? 0;
+/** Sealed records, for the catalogue and for pointing somewhere next. */
+export function sealed(progress: Progress): GameNode[] {
+  const open = new Set(progress.n);
+  return NODES.filter((n) => !open.has(n.id));
 }
 
-/**
- * The next thing worth saying. Backs the `hint` command and the idle
- * nudge, and guarantees every reply can carry a forward lead —
- * no visitor should ever be left without somewhere to go.
- */
 export function nextLead(progress: Progress): GameNode | null {
-  const already = new Set(progress.n);
-  const count = publicNodeCount(progress);
-  return (
-    PUBLIC_NODES.find((n) => !already.has(n.id) && count >= tierThreshold(n.tier)) ?? null
-  );
+  return sealed(progress)[0] ?? null;
 }
 
-/** Teasers the AI is allowed to mention right now. Locked-but-visible. */
-export function visibleTeasers(progress: Progress): GameNode[] {
-  const already = new Set(progress.n);
-  const count = publicNodeCount(progress);
-  return PUBLIC_NODES.filter(
-    (n) => !already.has(n.id) && count >= tierThreshold(n.tier),
-  ).slice(0, 4);
-}
+export { TOTAL_NODES };

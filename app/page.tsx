@@ -1,21 +1,10 @@
-"use client";
+import { catalogue } from "@/lib/game/nodes";
+import { Landing } from "@/components/terminal/Landing";
 
-import { useState } from "react";
-import { BootSequence } from "@/components/terminal/BootSequence";
-import { Terminal } from "@/components/terminal/Terminal";
-
+/* Server component. catalogue() is public by design, but lib/game/nodes
+   must never be imported from a client component — it pulls in the tactic
+   patterns, which would hand every visitor the answer key. Only the
+   serialised rows cross to the browser. */
 export default function Home() {
-  const [entered, setEntered] = useState(false);
-
-  if (entered) return <Terminal />;
-
-  return (
-    <main className="scanlines relative min-h-dvh bg-bg">
-      <div className="bg-grid absolute inset-0" aria-hidden />
-      <div className="bg-vignette absolute inset-0" aria-hidden />
-      <div className="relative">
-        <BootSequence onEnter={() => setEntered(true)} />
-      </div>
-    </main>
-  );
+  return <Landing rows={catalogue()} />;
 }

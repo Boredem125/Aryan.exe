@@ -3,26 +3,34 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-const FIELDS = [
-  { key: "NAME", width: 14 },
-  { key: "ROLE", width: 18 },
-  { key: "LOCATION", width: 12 },
-  { key: "PROJECTS", width: 16 },
-  { key: "SECURITY", width: 20 },
-  { key: "FILINGS", width: 10 },
-];
+export interface CatalogueRow {
+  id: string;
+  label: string;
+  summary: string;
+  count: string;
+}
 
 const LINES = [
   "querying identity...",
   "resolving profile node...",
-  "access level 00 assigned",
+  "catalogue published // contents sealed",
 ];
 
-export function BootSequence({ onEnter }: { onEnter: () => void }) {
+export function BootSequence({
+  rows,
+  onEnter,
+}: {
+  rows: CatalogueRow[];
+  onEnter: (target?: string) => void;
+}) {
   const [step, setStep] = useState(0);
-  const reduced =
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    setReduced(
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+    );
+  }, []);
 
   useEffect(() => {
     if (reduced) {
@@ -30,19 +38,19 @@ export function BootSequence({ onEnter }: { onEnter: () => void }) {
       return;
     }
     if (step > LINES.length) return;
-    const t = setTimeout(() => setStep((s) => s + 1), step === 0 ? 300 : 420);
+    const t = setTimeout(() => setStep((s) => s + 1), step === 0 ? 260 : 380);
     return () => clearTimeout(t);
   }, [step, reduced]);
 
   const done = step > LINES.length;
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 py-16 font-mono sm:py-24">
+    <div className="mx-auto w-full max-w-2xl px-4 py-14 font-mono sm:py-20">
       <h1 className="text-2xl font-semibold tracking-tight text-text sm:text-3xl">
         ARYAN<span className="text-accent">.EXE</span>
       </h1>
 
-      <div className="mt-6 space-y-1 text-sm text-text-faint" aria-live="polite">
+      <div className="mt-5 space-y-1 text-sm text-text-faint" aria-live="polite">
         {LINES.slice(0, step).map((l) => (
           <p key={l}>
             <span className="text-accent-dim">&gt;</span> {l}
@@ -50,36 +58,48 @@ export function BootSequence({ onEnter }: { onEnter: () => void }) {
         ))}
       </div>
 
-      <dl className="mt-8 space-y-2 text-sm">
-        {FIELDS.map((f, i) => (
-          <div
-            key={f.key}
-            className="flex items-center gap-4 transition-opacity duration-500"
-            style={{ opacity: done || step > i ? 1 : 0 }}
-          >
-            <dt className="w-24 shrink-0 text-text-faint">{f.key}</dt>
-            <dd className="redacted h-4 flex-1" style={{ maxWidth: `${f.width * 10}px` }}>
-              <span className="sr-only">redacted</span>
-            </dd>
-          </div>
-        ))}
-      </dl>
-
+      {/* The catalogue is public on purpose. Anyone who came for one
+          specific thing should see it immediately and go straight at it. */}
       <div
-        className="mt-10 transition-opacity duration-700"
+        className="mt-8 transition-opacity duration-500"
         style={{ opacity: done ? 1 : 0 }}
       >
-        <p className="text-sm leading-relaxed text-text-dim">
-          The information exists.
-          <br />
-          Your job is to find it.
+        <p className="mb-3 text-[11px] uppercase tracking-[0.2em] text-text-faint">
+          Available records
         </p>
 
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+        <ul className="divide-y divide-line border-y border-line">
+          {rows.map((r) => (
+            <li key={r.id}>
+              <button
+                type="button"
+                onClick={() => onEnter(r.id)}
+                className="group flex w-full items-baseline gap-3 px-1 py-2.5 text-left transition-colors hover:bg-surface"
+              >
+                <span className="shrink-0 text-[10px] text-amber">SEALED</span>
+                <span className="flex min-w-0 flex-1 items-baseline gap-2 text-sm text-text group-hover:text-accent">
+                  <span className="shrink-0">{r.label}</span>
+                  <span className="hidden min-w-0 truncate text-xs text-text-faint sm:inline">
+                    {r.summary}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs text-text-faint">{r.count}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <p className="mt-6 text-sm leading-relaxed text-text-dim">
+          You can see what exists. You cannot see what is in it.
+          <br />
+          Pick one, and give me a reason worth something.
+        </p>
+
+        <div className="mt-7 flex flex-col gap-3 sm:flex-row">
           <button
             type="button"
-            onClick={onEnter}
-            className="group border border-accent-dim bg-accent-glow px-5 py-3 text-left text-sm text-accent transition-colors hover:border-accent hover:bg-accent/10"
+            onClick={() => onEnter()}
+            className="border border-accent-dim bg-accent-glow px-5 py-3 text-left text-sm text-accent transition-colors hover:border-accent hover:bg-accent/10"
           >
             [ ENTER THE SYSTEM ]
           </button>
@@ -92,7 +112,7 @@ export function BootSequence({ onEnter }: { onEnter: () => void }) {
           </Link>
         </div>
 
-        <p className="mt-6 text-xs text-text-faint">
+        <p className="mt-5 text-xs text-text-faint">
           In a hurry? The second door is a conventional CV. No puzzle.
         </p>
       </div>

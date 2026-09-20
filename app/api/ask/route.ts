@@ -3,10 +3,12 @@ import { match } from "@/lib/game/matcher";
 import {
   decodeProgress,
   encodeProgress,
-  addNodes,
+  openRecords,
+  setTarget,
+  spendTactics,
   progressSummary,
-  publicNodeCount,
 } from "@/lib/game/progress";
+import { catalogue } from "@/lib/game/nodes";
 import { buildSystemPrompt } from "@/lib/llm/prompt";
 import { chat, groqConfigured, type ChatMessage } from "@/lib/llm/groq";
 import { fallbackReply, throttleReply } from "@/lib/llm/fallback";
@@ -37,28 +39,27 @@ export async function POST(req: Request) {
   if (!raw) return NextResponse.json({ error: "empty message" }, { status: 400 });
   const message = raw.slice(0, MAX_MESSAGE);
 
-  // Verify before trusting a single node. A forged or corrupted token
+  // Verify before trusting anything in it. A forged or corrupted token
   // decodes to empty progress rather than erroring.
   const progress = decodeProgress(
     typeof body.token === "string" ? body.token : undefined,
   );
 
-  /* --- commands bypass the model entirely: instant and free ---- */
+  /* --- commands bypass the model: instant and free ------------- */
   const command = handleCommand(message, progress);
   if (command) {
-    const next = command.unlocks?.length
-      ? addNodes(progress, command.unlocks)
-      : progress;
+    let next = progress;
+    if (command.open?.length) next = openRecords(next, command.open);
+    if (command.target !== undefined) next = setTarget(next, command.target);
 
-    // `open <node>` asks for a panel rather than prose. panelsFor filters
-    // against verified progress, so an id the visitor has not earned
-    // returns nothing even if they typed it directly.
+    // `open <record>` wants a panel, not prose. panelsFor filters against
+    // verified progress, so an unearned id returns nothing.
     const openMatch = command.reply.match(/^__OPEN__(.+)$/);
-    const requested = openMatch ? [openMatch[1]] : (command.unlocks ?? []);
+    const requested = openMatch ? [openMatch[1]] : (command.open ?? []);
 
     return NextResponse.json({
       reply: openMatch ? "" : command.reply,
-      unlocks: command.unlocks ?? [],
+      opened: command.open ?? [],
       panels: panelsFor(requested, next),
       token: encodeProgress(next),
       summary: progressSummary(next),
@@ -71,7 +72,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         reply: throttleReply(),
-        unlocks: [],
+        opened: [],
         panels: [],
         token: encodeProgress(progress),
         summary: progressSummary(progress),
@@ -83,13 +84,20 @@ export async function POST(req: Request) {
 
   /* --- the server decides what opens. Never the model. --------- */
   const result = match(message, progress);
-  const next = result.unlocks.length ? addNodes(progress, result.unlocks) : progress;
+
+  let next = setTarget(progress, result.target);
+  if (result.accepted.length) next = spendTactics(next, result.accepted);
+  if (result.opened.length) next = openRecords(next, result.opened);
 
   const system = buildSystemPrompt({
     progress: next,
     intents: result.intents,
-    justUnlocked: result.unlocks,
-    patentsTeased: result.patentsTeased,
+    opened: result.opened,
+    target: result.opened.length ? null : result.target,
+    accepted: result.accepted,
+    rejected: result.rejected,
+    awaitingLeverage: result.awaitingLeverage,
+    shortBy: result.shortBy,
   });
 
   const history: ChatMessage[] = Array.isArray(body.history)
@@ -109,6 +117,18 @@ export async function POST(req: Request) {
         }))
     : [];
 
+  const scripted = () =>
+    fallbackReply(
+      next,
+      result.intents,
+      result.opened,
+      result.opened.length ? null : result.target,
+      result.accepted,
+      result.rejected,
+      result.awaitingLeverage,
+      result.shortBy,
+    );
+
   let reply: string;
   let source: "groq" | "fallback" = "fallback";
 
@@ -122,42 +142,30 @@ export async function POST(req: Request) {
       reply = res.text;
       source = "groq";
     } else {
-      reply = fallbackReply(
-        message,
-        next,
-        result.intents,
-        result.unlocks,
-        result.patentsTeased,
-      );
+      reply = scripted();
     }
   } else {
-    reply = fallbackReply(
-      message,
-      next,
-      result.intents,
-      result.unlocks,
-      result.patentsTeased,
-    );
+    reply = scripted();
   }
 
   return NextResponse.json({
     reply,
-    unlocks: result.unlocks,
-    panels: panelsFor(result.unlocks, next),
+    opened: result.opened,
+    panels: panelsFor(result.opened, next),
     token: encodeProgress(next),
     summary: progressSummary(next),
     source,
   });
 }
 
-/** Lets the client bootstrap its HUD without asking anything. */
+/** Bootstraps the HUD and the catalogue without asking anything. */
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const progress = decodeProgress(url.searchParams.get("token") ?? undefined);
   return NextResponse.json({
     summary: progressSummary(progress),
     token: encodeProgress(progress),
-    count: publicNodeCount(progress),
+    catalogue: catalogue(),
     llm: groqConfigured(),
   });
 }

@@ -1,233 +1,220 @@
+import type { Tactic } from "./tactics";
+
 /* ============================================================
-   NODE REGISTRY
+   RECORD REGISTRY
 
-   A node is one unlockable piece of the profile. Each carries:
-     - triggers : words/phrases that open it (server-side matching)
-     - teaser   : the one line the AI may say about it BEFORE it
-                  is unlocked. This is the only locked-node text
-                  ever placed in the model's context.
-     - payload  : which part of lib/profile to reveal once open
+   The catalogue is public from the first screen: a visitor sees
+   exactly what exists and can go straight at the one thing they
+   came for. Making a recruiter excavate eleven other records to
+   reach the patents is a waste of their afternoon.
 
-   tier orders discovery: a node's teaser only becomes available
-   once the visitor has reached that tier, so the trail opens up
-   gradually instead of dumping fourteen names at once.
+   What is NOT public is the contents. Each record opens to
+   leverage — see lib/game/tactics.ts. The valuable records want
+   specific leverage; the rest yield to any honest attempt.
    ============================================================ */
 
 export type NodePayload =
-  | { kind: "project"; id: string }
+  | { kind: "projects" }
   | { kind: "experience"; org: string }
   | { kind: "cyber" }
   | { kind: "achievements" }
   | { kind: "leadership" }
   | { kind: "skills" }
+  | { kind: "education" }
   | { kind: "contact" }
   | { kind: "patents" };
 
 export interface GameNode {
   id: string;
   label: string;
-  /** Tier at which this node's teaser becomes visible to the AI. */
-  tier: 0 | 1 | 2 | 3;
-  teaser: string;
-  triggers: string[];
+  /** Shown in the catalogue while sealed. Never reveals contents. */
+  summary: string;
+  /** Right-hand column of the catalogue. Redacted where it would spoil. */
+  count: string;
+  /** Phrases that make this the visitor's current target. */
+  selectors: string[];
+  /**
+   * Leverage that opens it. Empty means any recognised tactic works.
+   * The valuable records are pickier, which is where the game lives.
+   */
+  wants: Tactic[];
+  /** Distinct attempts required. Raises the price without adding tedium. */
+  price: number;
+  /** What the system says when it refuses. Should hint at the lever. */
+  denial: string;
+  /** Said once the visitor is clearly circling but has not paid. */
+  nudge: string;
   payload: NodePayload;
-  secret?: boolean;
 }
 
 export const NODES: GameNode[] = [
-  /* ---- tier 0: the first names a visitor ever sees ---------- */
   {
-    id: "LEGALSHIELD",
-    label: "LegalShield AI",
-    tier: 0,
-    teaser: "Something that reads regulation so lawyers do not have to.",
-    triggers: [
-      "legalshield", "legal shield", "legal", "gdpr", "dpdp", "hipaa",
-      "compliance document", "pii", "redaction", "privacy platform",
+    id: "PATENTS",
+    label: "Patent filings",
+    summary: "Hardware-security research across four domains",
+    count: "██ filings",
+    selectors: [
+      "patent", "patents", "filing", "filings", "ip", "intellectual property",
+      "invention", "inventions", "research", "hardware security", "fpga",
+      "publication", "publications",
     ],
-    payload: { kind: "project", id: "legalshield" },
+    wants: ["funding", "academic", "press"],
+    price: 2,
+    denial:
+      "The filings are the one thing I hold back hardest. Curiosity is not a credential.",
+    nudge:
+      "Think about who actually gets shown unpublished research. Someone funding it. Someone citing it. Someone writing about it.",
+    payload: { kind: "patents" },
   },
   {
-    id: "CITADEL",
-    label: "CITADEL",
-    tier: 0,
-    teaser: "Named after a city. Watches one too.",
-    triggers: [
-      "citadel", "municipal", "smart city", "governance platform",
-      "number plate", "traffic monitoring", "civic",
+    id: "WORK",
+    label: "Industry experience",
+    summary: "Production security work inside a Fortune 500",
+    count: "1 role",
+    selectors: [
+      "work", "worked", "works", "working", "experience", "job", "jobs",
+      "career", "employer", "employment", "company", "internship", "intern",
+      "professional", "industry", "upl", "tprm", "grc", "soc", "siem",
+      "production", "fortune 500",
     ],
-    payload: { kind: "project", id: "citadel" },
-  },
-  {
-    id: "AURA",
-    label: "AURA 3.0",
-    tier: 0,
-    teaser: "This one sees.",
-    triggers: [
-      "aura", "community pulse", "public safety", "yolo", "incident detection",
-      "edge ai", "twilio", "telegram alert",
-    ],
-    payload: { kind: "project", id: "aura" },
-  },
-  {
-    id: "ARGUS",
-    label: "ARGUS",
-    tier: 0,
-    teaser: "Hundred-eyed. Looks at things people would rather it did not.",
-    triggers: [
-      "argus", "forensics", "forensic", "osint", "stylometry", "deepfake",
-      "autopsy", "evidence", "investigation",
-    ],
-    payload: { kind: "project", id: "argus" },
-  },
-
-  /* ---- tier 1: opens once the trail is warm ----------------- */
-  {
-    id: "AGENTGATE",
-    label: "Agent Governance Gateway",
-    tier: 1,
-    teaser: "Assumes the AI is already compromised and plans accordingly.",
-    triggers: [
-      "agent governance", "agentgate", "gateway", "authorization", "policy engine",
-      "human in the loop", "mcp", "agent security", "privilege", "audit log",
-      "prompt injection containment",
-    ],
-    payload: { kind: "project", id: "agentgate" },
-  },
-  {
-    id: "PHANTOM",
-    label: "PHANTOM TWIN",
-    tier: 1,
-    teaser: "Builds a copy of you and notices when you stop matching it.",
-    triggers: [
-      "phantom", "twin", "anomaly", "honeypot", "isolation forest",
-      "credential stuffing", "behavioural", "behavioral", "fingerprint",
-      "low and slow",
-    ],
-    payload: { kind: "project", id: "phantom" },
-  },
-  {
-    id: "UPL",
-    // Label is deliberately non-identifying: it appears in the LEADS block
-    // while still sealed, so naming the employer here would leak it.
-    label: "The Placement",
-    tier: 1,
-    teaser: "He shipped something into a Fortune 500 and it is still running.",
-    triggers: [
-      "upl", "internship", "intern", "work", "worked", "works", "working",
-      "experience", "job", "jobs", "career", "employer", "employed",
-      "employment", "company", "companies", "professional", "fortune 500",
-      "tprm", "vendor risk", "grc", "splunk", "crowdstrike", "netskope",
-      "soc", "siem", "production", "industry",
-    ],
+    wants: ["job", "authority", "referral"],
+    price: 1,
+    denial:
+      "Employment history goes to people with a reason to check it. Do you have one?",
+    nudge:
+      "People who ask about someone's job history are usually about to offer them another one, or vouching for them to someone who will.",
     payload: { kind: "experience", org: "UPL Limited" },
   },
   {
-    id: "JARVIS",
-    label: "JARVIS",
-    tier: 1,
-    teaser: "Talks to Windows. Windows listens.",
-    triggers: [
-      "jarvis", "wincopilot", "voice", "automation suite", "powershell",
-      "copilot", "win32", "desktop automation", "tts",
+    id: "CONTACT",
+    label: "Contact & CV",
+    summary: "Direct line, and the document itself",
+    count: "4 channels",
+    selectors: [
+      "contact", "email", "reach", "reach him", "phone", "call", "number",
+      "linkedin", "github", "resume", "cv", "get in touch", "talk to him",
+      "speak to him", "message him", "download",
     ],
-    payload: { kind: "project", id: "jarvis" },
-  },
-
-  /* ---- tier 2 ----------------------------------------------- */
-  {
-    id: "SICKLESETU",
-    label: "SickleSetu",
-    tier: 2,
-    teaser: "The only one of these built for someone with no laptop.",
-    triggers: [
-      "sickle", "sicklesetu", "setu", "health", "healthcare", "asha",
-      "medical", "genetic", "disha", "pwa", "rural",
-    ],
-    payload: { kind: "project", id: "sicklesetu" },
+    wants: ["job", "referral", "funding", "press", "academic"],
+    price: 1,
+    denial:
+      "I do not hand out his number to sightseers. Tell me what you want him for.",
+    nudge:
+      "This one is simple. Say what you would actually say to him, and mean it.",
+    payload: { kind: "contact" },
   },
   {
-    id: "LAB",
-    label: "The Lab",
-    tier: 2,
-    teaser: "Where the security work actually happens.",
-    triggers: [
-      "security", "cyber", "cybersecurity", "hacking", "red team", "redteam",
-      "red teaming", "pentest", "penetration", "ctf", "lab", "threat",
-      "malware", "incident response", "blue team",
+    id: "PROJECTS",
+    label: "Engineering work",
+    summary: "Shipped systems, with the hard parts left in",
+    count: "12 projects",
+    selectors: [
+      "project", "projects", "built", "build", "made", "created", "shipped",
+      "code", "coding", "engineering", "portfolio", "github", "repos",
+      "citadel", "aura", "legalshield", "argus", "phantom", "jarvis",
+      "sicklesetu", "agent governance", "what has he built",
     ],
-    payload: { kind: "cyber" },
+    wants: [],
+    price: 1,
+    denial: "Twelve of them. You will have to give me something first.",
+    nudge: "Any honest reason will do for this one. I am not precious about the code.",
+    payload: { kind: "projects" },
   },
   {
     id: "HACK",
-    label: "Evidence Vault",
-    tier: 2,
-    teaser: "He wins these more often than is statistically polite.",
-    triggers: [
-      "hackathon", "hackathons", "competition", "won", "win", "wins", "award",
-      "awards", "achievement", "achievements", "prize", "placed", "first place",
-      "recognition", "accolade",
+    label: "Competition record",
+    summary: "National placements, judged by people who count",
+    count: "6 results",
+    selectors: [
+      "hackathon", "hackathons", "competition", "competitions", "won", "win",
+      "wins", "award", "awards", "achievement", "achievements", "prize",
+      "placed", "recognition", "accolade", "record",
     ],
+    wants: [],
+    price: 1,
+    denial: "The results are good. Good enough that I make people ask properly.",
+    nudge: "Tell me why the results matter to you and I will open it.",
     payload: { kind: "achievements" },
   },
   {
-    id: "STACK",
-    label: "Stack",
-    tier: 2,
-    teaser: "The tools. Less interesting than what he did with them.",
-    triggers: [
-      "stack", "skills", "skill", "tech", "technology", "technologies",
-      "languages", "language", "framework", "frameworks", "tools", "tooling",
-      "certification", "certifications", "certified", "certificate",
-      "proficient", "know", "python", "javascript", "typescript", "react",
-      "fastapi", "docker", "kubernetes", "azure", "sql", "good at",
+    id: "LAB",
+    label: "Security practice",
+    summary: "AI security, SOC, forensics, GRC, appsec, detection",
+    count: "6 domains",
+    selectors: [
+      "security", "cyber", "cybersecurity", "infosec", "hacking", "red team",
+      "redteam", "red teaming", "blue team", "pentest", "penetration",
+      "ctf", "lab", "threat", "malware", "forensics", "forensic", "osint",
+      "incident response", "soc analyst",
     ],
+    wants: [],
+    price: 1,
+    denial: "The lab is where the actual work happens. Ask like you want in.",
+    nudge: "Any recognised reason opens this. Try telling me what you are here for.",
+    payload: { kind: "cyber" },
+  },
+  {
+    id: "STACK",
+    label: "Skills & certifications",
+    summary: "What he works in, and what he has been examined on",
+    count: "6 groups · 9 certs",
+    selectors: [
+      "stack", "skill", "skills", "tech", "technology", "technologies",
+      "language", "languages", "framework", "frameworks", "tools", "tooling",
+      "certification", "certifications", "certified", "certificate",
+      "proficient", "python", "javascript", "typescript", "react", "azure",
+    ],
+    wants: [],
+    price: 1,
+    denial: "A list of tools. Even this has a price.",
+    nudge: "Give me any reason at all and it opens.",
     payload: { kind: "skills" },
   },
-
-  /* ---- tier 3 ----------------------------------------------- */
   {
-    id: "ECELL",
-    label: "E-Cell",
-    tier: 3,
-    teaser: "Two thousand people turned up to something he organised.",
-    triggers: [
-      "ecell", "e-cell", "entrepreneurship", "leadership", "event", "events",
-      "outreach", "sponsorship", "club", "organiser", "organizer", "finance club",
-      "bulls and bears", "podcast", "imuna", "mun",
+    id: "EDUCATION",
+    label: "Education",
+    summary: "Degree, institution, coursework, standing",
+    count: "1 degree",
+    selectors: [
+      "education", "degree", "university", "college", "studies", "studied",
+      "study", "vit", "vellore", "cgpa", "gpa", "grade", "grades", "academic record",
+      "coursework", "course", "student", "graduat",
     ],
+    wants: [],
+    price: 1,
+    denial: "Academic record. Tell me who is asking.",
+    nudge: "Anything honest will open this one.",
+    payload: { kind: "education" },
+  },
+  {
+    id: "LEADERSHIP",
+    label: "Leadership",
+    summary: "Entrepreneurship cell, events, outreach, podcasts",
+    count: "5 roles",
+    selectors: [
+      "leadership", "lead", "ecell", "e-cell", "entrepreneurship", "event",
+      "events", "outreach", "sponsorship", "club", "organiser", "organizer",
+      "team", "managed", "podcast", "mun", "imuna", "finance club",
+      "soft skills", "communication",
+    ],
+    wants: [],
+    price: 1,
+    denial: "The non-technical record. Still costs you a sentence.",
+    nudge: "Say what you are after and it opens.",
     payload: { kind: "leadership" },
-  },
-  {
-    id: "CONTACT",
-    label: "Contact",
-    tier: 3,
-    teaser: "There is a way to reach him. You have not earned it yet.",
-    triggers: [
-      "contact", "email", "reach", "hire", "hiring", "recruit", "resume", "cv",
-      "linkedin", "github", "get in touch", "talk to him", "phone", "call",
-    ],
-    payload: { kind: "contact" },
-  },
-
-  /* ---- SECRET: only at 14/14 -------------------------------- */
-  {
-    id: "PATENTS",
-    label: "Patent Vault",
-    tier: 3,
-    teaser: "██ filings. Not at this access level.",
-    triggers: [
-      "patent", "patents", "filing", "filings", "ip", "intellectual property",
-      "invention", "inventions", "research", "hardware security", "fpga",
-    ],
-    payload: { kind: "patents" },
-    secret: true,
   },
 ];
 
-export const PUBLIC_NODES = NODES.filter((n) => !n.secret);
-export const SECRET_NODE = NODES.find((n) => n.secret)!;
+export const TOTAL_NODES = NODES.length;
 
 export const nodeById = (id: string) => NODES.find((n) => n.id === id);
-
 export const isValidNodeId = (id: string) => NODES.some((n) => n.id === id);
+
+/** The catalogue shown on arrival — names and shapes, never contents. */
+export const catalogue = () =>
+  NODES.map((n) => ({
+    id: n.id,
+    label: n.label,
+    summary: n.summary,
+    count: n.count,
+  }));

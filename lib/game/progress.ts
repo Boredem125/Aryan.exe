@@ -1,48 +1,47 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { isValidNodeId } from "./nodes";
-import { levelFor, TOTAL_NODES } from "./levels";
+import { isValidNodeId, TOTAL_NODES } from "./nodes";
+import { levelFor } from "./levels";
+import type { Tactic } from "./tactics";
 
 /* ============================================================
    Progress tokens.
 
-   The client holds an opaque token in localStorage and sends it
-   with every request. The server verifies the signature before
-   trusting a single node in it.
+   The client holds an opaque token; the server verifies the
+   signature before trusting anything in it.
 
-   This is not protecting anything sensitive — a visitor who forges
-   progress just gets the content sooner. It exists so that reaching
-   ACCESS LEVEL 04 means the visitor actually got there, and so the
-   endgame is not trivially spoofable from devtools.
+   This protects nothing sensitive — a forger just reaches the
+   content sooner. It exists so that opening a record means the
+   visitor actually persuaded the system, and so the ending is not
+   spoofable from devtools.
    ============================================================ */
 
-const VERSION = 1;
+const VERSION = 2;
 
 export interface Progress {
   v: number;
-  /** Discovered node ids, deduped. */
+  /** Opened record ids. */
   n: string[];
-  /** Issued-at, epoch seconds. */
+  /** Current target, if the visitor has picked one. */
+  k: string | null;
+  /** Distinct tactics already spent on the current target. */
+  a: Tactic[];
   t: number;
 }
 
-export const EMPTY_PROGRESS: Progress = { v: VERSION, n: [], t: 0 };
+export const EMPTY_PROGRESS: Progress = { v: VERSION, n: [], k: null, a: [], t: 0 };
 
 function secret(): string {
   const s = process.env.PROGRESS_SECRET;
   if (s && s.length >= 16) return s;
-  // Dev fallback so the app runs before .env.local exists. A rotating
-  // secret simply invalidates old tokens, which resets progress — the
-  // site stays usable, which matters more here than token longevity.
+  // Dev fallback so the app runs before .env.local exists. Rotating this
+  // simply invalidates old tokens, which resets progress — the site stays
+  // usable, which matters more here than token longevity.
   return "aryan-exe-dev-secret-not-for-production-use";
 }
 
-function b64url(buf: Buffer): string {
-  return buf.toString("base64url");
-}
-
-function sign(payload: string): string {
-  return b64url(createHmac("sha256", secret()).update(payload).digest());
-}
+const b64url = (buf: Buffer) => buf.toString("base64url");
+const sign = (payload: string) =>
+  b64url(createHmac("sha256", secret()).update(payload).digest());
 
 export function encodeProgress(p: Progress): string {
   const payload = b64url(Buffer.from(JSON.stringify(p), "utf8"));
@@ -50,9 +49,9 @@ export function encodeProgress(p: Progress): string {
 }
 
 /**
- * Verify and decode. Any tampering, malformed input or unknown node id
- * yields EMPTY_PROGRESS — we reset rather than throw, so a corrupted
- * localStorage value degrades into "start over" instead of a broken page.
+ * Verify and decode. Tampering, malformed input, an unknown record id or
+ * a stale version all yield EMPTY_PROGRESS — we reset rather than throw,
+ * so a corrupted value degrades into "start over", not a broken page.
  */
 export function decodeProgress(token: string | undefined | null): Progress {
   if (!token || typeof token !== "string") return EMPTY_PROGRESS;
@@ -61,55 +60,76 @@ export function decodeProgress(token: string | undefined | null): Progress {
   if (dot <= 0) return EMPTY_PROGRESS;
 
   const payload = token.slice(0, dot);
-  const given = token.slice(dot + 1);
-  const expected = sign(payload);
+  const given = Buffer.from(token.slice(dot + 1));
+  const expected = Buffer.from(sign(payload));
 
-  // Constant-time compare; lengths must match first or timingSafeEqual throws.
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return EMPTY_PROGRESS;
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+    return EMPTY_PROGRESS;
+  }
 
   try {
     const parsed = JSON.parse(
       Buffer.from(payload, "base64url").toString("utf8"),
-    ) as unknown;
+    ) as Partial<Progress>;
 
-    if (typeof parsed !== "object" || parsed === null) return EMPTY_PROGRESS;
-    const p = parsed as Partial<Progress>;
-    if (p.v !== VERSION || !Array.isArray(p.n)) return EMPTY_PROGRESS;
+    if (parsed?.v !== VERSION || !Array.isArray(parsed.n)) return EMPTY_PROGRESS;
 
-    const nodes = Array.from(
-      new Set(p.n.filter((x): x is string => typeof x === "string" && isValidNodeId(x))),
+    const n = Array.from(
+      new Set(
+        parsed.n.filter((x): x is string => typeof x === "string" && isValidNodeId(x)),
+      ),
     );
+    const k =
+      typeof parsed.k === "string" && isValidNodeId(parsed.k) ? parsed.k : null;
+    const a = Array.isArray(parsed.a)
+      ? Array.from(new Set(parsed.a.filter((x): x is Tactic => typeof x === "string")))
+      : [];
 
-    return { v: VERSION, n: nodes, t: typeof p.t === "number" ? p.t : 0 };
+    return { v: VERSION, n, k, a, t: typeof parsed.t === "number" ? parsed.t : 0 };
   } catch {
     return EMPTY_PROGRESS;
   }
 }
 
-export function addNodes(p: Progress, ids: string[]): Progress {
-  const next = new Set(p.n);
-  for (const id of ids) if (isValidNodeId(id)) next.add(id);
-  return { v: VERSION, n: Array.from(next), t: Math.floor(Date.now() / 1000) };
+const stamp = () => Math.floor(Date.now() / 1000);
+
+export function openRecords(p: Progress, ids: string[]): Progress {
+  const n = new Set(p.n);
+  for (const id of ids) if (isValidNodeId(id)) n.add(id);
+  // Opening the target clears it, so the next question starts fresh.
+  const clearTarget = p.k !== null && ids.includes(p.k);
+  return {
+    v: VERSION,
+    n: Array.from(n),
+    k: clearTarget ? null : p.k,
+    a: clearTarget ? [] : p.a,
+    t: stamp(),
+  };
 }
 
-/** Public nodes only — the secret node does not count toward the total. */
-export function publicNodeCount(p: Progress): number {
-  return p.n.filter((id) => id !== "PATENTS").length;
+/** Switching target resets the tactics spent — each lock is paid separately. */
+export function setTarget(p: Progress, id: string | null): Progress {
+  if (id === p.k) return p;
+  return { ...p, k: id, a: [], t: stamp() };
+}
+
+export function spendTactics(p: Progress, tactics: Tactic[]): Progress {
+  if (!tactics.length) return p;
+  return { ...p, a: Array.from(new Set([...p.a, ...tactics])), t: stamp() };
 }
 
 export function progressSummary(p: Progress) {
-  const count = publicNodeCount(p);
+  const count = p.n.length;
   const level = levelFor(count);
   return {
     nodes: p.n,
     count,
     total: TOTAL_NODES,
+    target: p.k,
+    spent: p.a,
     level: level.n,
     levelCode: level.code,
     levelLabel: level.label,
     complete: count >= TOTAL_NODES,
-    patentsUnlocked: p.n.includes("PATENTS"),
   };
 }

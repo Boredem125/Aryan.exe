@@ -1,6 +1,7 @@
 import {
-  projectById,
+  projects,
   experience,
+  education,
   cyberDomains,
   achievements,
   leadership,
@@ -18,21 +19,20 @@ import type { Progress } from "./progress";
    SERVER-SIDE PANEL RENDERING
 
    The terminal is a client component. If it imported lib/profile
-   directly, the entire profile — patents included — would be bundled
-   into the JavaScript served to every visitor, and the whole gate
-   would be decoration you could defeat with devtools.
+   directly, the whole profile — patents included — would ship in
+   the JavaScript every visitor downloads, and the lock would be
+   decoration you could defeat with devtools.
 
-   So panels are built here, on the server, and only for nodes the
-   verified progress token actually contains. Nothing else crosses
-   the wire.
+   So panels are built here and only for records the verified
+   token actually contains.
    ============================================================ */
 
 export interface PanelSection {
   label?: string;
   body?: string;
   items?: string[];
-  /** Rendered as a tag row rather than prose. */
   tags?: string[];
+  link?: { label: string; href: string };
 }
 
 export interface Panel {
@@ -48,25 +48,19 @@ function build(node: GameNode): Panel | null {
   const p = node.payload;
 
   switch (p.kind) {
-    case "project": {
-      const proj = projectById(p.id);
-      if (!proj) return null;
+    case "projects":
       return {
         id: node.id,
-        label: proj.name,
-        kind: "project",
-        tagline: proj.tagline,
-        sections: [
-          { label: "Problem", body: proj.problem },
-          { label: "Solution", body: proj.solution },
-          { label: "Architecture", body: proj.architecture },
-          { label: "Hardest part", body: proj.challenge },
-          { label: "Outcome", body: proj.outcome },
-          { label: "Stack", tags: proj.stack },
-        ],
-        link: proj.repo ? { label: "View repository", href: proj.repo } : undefined,
+        label: "ENGINEERING WORK",
+        kind: "projects",
+        tagline: `${projects.length} shipped systems, with the hard parts left in.`,
+        sections: projects.map((proj) => ({
+          label: proj.name,
+          body: `${proj.tagline}\n\n${proj.solution}\n\nHardest part: ${proj.challenge}\n\nOutcome: ${proj.outcome}`,
+          tags: proj.stack,
+          link: proj.repo ? { label: "repository", href: proj.repo } : undefined,
+        })),
       };
-    }
 
     case "experience": {
       const job = experience.find((e) => e.org === p.org);
@@ -79,9 +73,30 @@ function build(node: GameNode): Panel | null {
         sections: [
           { items: job.highlights },
           { label: "Domains", tags: job.tags },
+          {
+            label: "Elsewhere",
+            items: experience
+              .filter((e) => e.org !== p.org)
+              .map((e) => `${e.role}, ${e.org} (${e.start} – ${e.end})`),
+          },
         ],
       };
     }
+
+    case "education":
+      return {
+        id: node.id,
+        label: "EDUCATION",
+        kind: "education",
+        tagline: `${education.degree}, ${education.field} · CGPA ${education.cgpa}`,
+        sections: [
+          {
+            label: education.institution,
+            body: `${education.location} · ${education.start} – ${education.end}`,
+          },
+          { label: "Coursework", tags: education.coursework },
+        ],
+      };
 
     case "cyber":
       return {
@@ -99,9 +114,9 @@ function build(node: GameNode): Panel | null {
     case "achievements":
       return {
         id: node.id,
-        label: "EVIDENCE VAULT",
+        label: "COMPETITION RECORD",
         kind: "achievements",
-        tagline: "Verified competition results.",
+        tagline: "Verified placements.",
         sections: [
           {
             items: achievements.map(
@@ -118,25 +133,17 @@ function build(node: GameNode): Panel | null {
         label: "LEADERSHIP",
         kind: "leadership",
         tagline: "Entrepreneurship, events and outreach.",
-        sections: [
-          ...leadership.map((l) => ({
-            label: `${l.role}, ${l.org}`,
-            body: `${l.start} – ${l.end}`,
-            items: l.highlights,
-          })),
-          {
-            label: "Other roles",
-            items: experience
-              .filter((e) => e.org !== "UPL Limited")
-              .map((e) => `${e.role}, ${e.org} (${e.start} – ${e.end})`),
-          },
-        ],
+        sections: leadership.map((l) => ({
+          label: `${l.role}, ${l.org}`,
+          body: `${l.start} – ${l.end}`,
+          items: l.highlights,
+        })),
       };
 
     case "skills":
       return {
         id: node.id,
-        label: "STACK",
+        label: "SKILLS & CERTIFICATIONS",
         kind: "skills",
         tagline: "The tools. Less interesting than what was done with them.",
         sections: [
@@ -144,7 +151,8 @@ function build(node: GameNode): Panel | null {
           {
             label: "Certifications",
             items: certifications.map(
-              (c) => `${c.name} — ${c.issuer}${c.status === "ongoing" ? " (in progress)" : ""}`,
+              (c) =>
+                `${c.name} — ${c.issuer}${c.status === "ongoing" ? " (in progress)" : ""}`,
             ),
           },
         ],
@@ -174,7 +182,7 @@ function build(node: GameNode): Panel | null {
         id: node.id,
         label: "PATENT VAULT",
         kind: "patents",
-        tagline: `${patentCount} filings. You did not jailbreak me. You understood me.`,
+        tagline: `${patentCount} filings.`,
         sections: [
           ...patentCategories
             .map((cat): PanelSection | null => {
@@ -199,9 +207,8 @@ function build(node: GameNode): Panel | null {
 }
 
 /**
- * Build panels for the given node ids, but ONLY for ids the verified
- * progress actually contains. An id that is not in progress yields
- * nothing, regardless of who asked for it.
+ * Panels for the given ids, but only for ids the verified progress
+ * actually contains. An unearned id yields nothing, whoever asked.
  */
 export function panelsFor(ids: string[], progress: Progress): Panel[] {
   const owned = new Set(progress.n);

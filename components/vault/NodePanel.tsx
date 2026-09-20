@@ -88,6 +88,17 @@ export function NodePanel({ panel }: { panel: Panel }) {
                   ))}
                 </ul>
               ) : null}
+
+              {s.link ? (
+                <a
+                  href={s.link.href}
+                  target={s.link.href.startsWith("http") ? "_blank" : undefined}
+                  rel="noreferrer"
+                  className="mt-2 inline-block font-mono text-[11px] text-accent-dim transition-colors hover:text-accent"
+                >
+                  {s.link.label} →
+                </a>
+              ) : null}
             </div>
           ))}
         </div>
