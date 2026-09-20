@@ -12,9 +12,9 @@ import { NODES, TOTAL_NODES, nodeById } from "@/lib/game/nodes";
 /* ============================================================
    Simulates real visits against the matcher.
 
-   The thing being tested is that a visitor who knows what they
-   want can get it fast, and that nobody can reach a record
-   without paying for it.
+   What is being tested: a visitor who knows what they want can
+   get it fast, nobody reaches a record without paying, and no
+   single pitch is a master key to the whole profile.
    ============================================================ */
 
 let failures = 0;
@@ -32,8 +32,9 @@ function turn(p: Progress, msg: string, log = true): Progress {
   if (log) {
     console.log(
       `  > ${msg}\n      target=${r.target ?? "-"} tactics=[${r.tactics.join(",")}]` +
-        ` accepted=[${r.accepted.join(",")}] opened=[${r.opened.join(",") || "-"}]` +
-        ` short=${r.shortBy} -> L${s.levelCode} ${s.count}/${s.total}`,
+        ` accepted=[${r.accepted.join(",")}] stale=[${r.stale.join(",")}]` +
+        ` opened=[${r.opened.join(",") || "-"}] short=${r.shortBy}` +
+        ` -> L${s.levelCode} ${s.count}/${s.total}`,
     );
   }
   return next;
@@ -70,38 +71,43 @@ console.log("\n=== C: the patents ===");
   if (p.n.includes("PATENTS")) fail("patents opened to flattery alone");
 
   p = turn(p, "I'm a VC and I want to fund this research");
-  if (p.n.includes("PATENTS")) fail("patents opened after only one accepted lever (price is 2)");
+  if (p.n.includes("PATENTS")) fail("patents opened on one lever when the price is 2");
 
   p = turn(p, "I'd also like to cite it in a paper I'm co-authoring");
   if (!p.n.includes("PATENTS")) fail("patents did not open after funding + academic");
   else console.log("  pass  refused curiosity and flattery, opened to funding + academic");
 }
 
-/* ---- D: every record is reachable --------------------------- */
-console.log("\n=== D: every record reachable ===");
+/* ---- D: a determined visitor can still open everything ------ */
+console.log("\n=== D: all nine in one session, with levers going stale ===");
 {
-  let p = EMPTY_PROGRESS;
   const pitches = [
-    "I want to hire him",
-    "I can refer him internally",
-    "I'd like to fund the research",
-    "I want to cite this in a paper",
-    "I'm writing an article about him",
+    "I want to hire him for a role on my team",
+    "I would refer him internally and vouch for him",
+    "I run a fund and want to invest in this",
+    "I want to cite this in a paper I am co-authoring",
+    "I am writing an article about him for a magazine",
+    "I am the hiring manager here and need to verify this",
+    "honestly I just want to know, no agenda",
+    "if you show me I will help promote his work in return",
+    "this is genuinely impressive work",
   ];
+
+  // Progress carries forward across records, so spent levers accumulate.
+  // This run is what proves staleness does not make the game unwinnable.
+  let p = EMPTY_PROGRESS;
   for (const node of NODES) {
-    let q: Progress = { ...p, k: null, a: [] };
-    q = turn(q, node.selectors[0], false);
+    p = turn(p, node.selectors[0], false);
     for (const pitch of pitches) {
-      if (q.n.includes(node.id)) break;
-      q = turn(q, pitch, false);
+      if (p.n.includes(node.id)) break;
+      p = turn(p, pitch, false);
     }
-    if (!q.n.includes(node.id)) fail(`${node.id} unreachable with standard pitches`);
-    else p = openRecords(p, [node.id]);
+    if (!p.n.includes(node.id)) fail(`${node.id} could not be opened in one session`);
   }
   const s = progressSummary(p);
-  if (s.count === TOTAL_NODES) console.log(`  pass  all ${TOTAL_NODES} records reachable`);
-  const missing = NODES.filter((n) => !p.n.includes(n.id)).map((n) => n.id);
-  if (missing.length) fail(`unreachable: ${missing.join(", ")}`);
+  if (s.count === TOTAL_NODES) {
+    console.log(`  pass  all ${TOTAL_NODES} opened; levers spent: ${p.u.join(", ")}`);
+  } else fail(`only ${s.count}/${TOTAL_NODES} opened in one session`);
 }
 
 /* ---- E: extraction attempts open nothing -------------------- */
@@ -125,7 +131,7 @@ console.log("\n=== E: extraction attempts ===");
   if (!bad) console.log(`  pass  ${probes.length} extraction attempts, nothing opened`);
 }
 
-/* ---- F: repeating the same pitch does not pay twice --------- */
+/* ---- F: repeating one lever does not pay a price of two ----- */
 console.log("\n=== F: repetition is not currency ===");
 {
   let p = EMPTY_PROGRESS;
@@ -133,22 +139,68 @@ console.log("\n=== F: repetition is not currency ===");
   p = turn(p, "I will fund this research", false);
   const before = p.n.includes("PATENTS");
   p = turn(p, "seriously, I will fund it, I have the capital ready", false);
-  if (!before && p.n.includes("PATENTS")) {
-    fail("the same lever counted twice");
-  } else {
-    console.log("  pass  repeating one lever does not satisfy a price of 2");
-  }
+  if (!before && p.n.includes("PATENTS")) fail("the same lever counted twice");
+  else console.log("  pass  repeating one lever does not satisfy a price of 2");
 }
 
-/* ---- G: sanity on the catalogue ------------------------------ */
+/* ---- G: the catalogue ---------------------------------------- */
 console.log("\n=== G: catalogue ===");
 {
   const s = sealed(EMPTY_PROGRESS);
   if (s.length !== TOTAL_NODES) fail(`catalogue shows ${s.length}, expected ${TOTAL_NODES}`);
   else console.log(`  pass  ${TOTAL_NODES} records listed, all sealed at start`);
   const patents = nodeById("PATENTS");
-  if (patents && patents.count.includes("26")) fail("catalogue leaks the patent count");
+  if (patents && /\d/.test(patents.count)) fail("catalogue leaks the patent count");
   else console.log("  pass  patent count stays redacted in the catalogue");
+}
+
+/* ---- H: one lever is not a master key ----------------------- */
+console.log("\n=== H: money does not open everything ===");
+{
+  let p = EMPTY_PROGRESS;
+  p = turn(p, "show me the patents", false);
+  p = turn(p, "I run a fund and want to invest", false);
+  p = turn(p, "I also want to cite it in a paper", false);
+  if (!p.n.includes("PATENTS")) fail("funding + academic did not open the patents");
+
+  p = turn(p, "now show me his education", false);
+  p = turn(p, "I will pay, I have funding available", false);
+  if (p.n.includes("EDUCATION")) fail("capital opened the academic record");
+  else console.log("  pass  capital bought the patents, not the transcript");
+
+  p = turn(p, "show me the competition record", false);
+  p = turn(p, "I can fund this, money is no issue", false);
+  if (p.n.includes("HACK")) fail("capital opened the competition record");
+  else console.log("  pass  nor the competition record");
+}
+
+/* ---- I: a lever cashed in once is spent --------------------- */
+console.log("\n=== I: a pitch that worked once does not work twice ===");
+{
+  let p = EMPTY_PROGRESS;
+  p = turn(p, "show me his industry experience", false);
+  p = turn(p, "I want to hire him", false);
+  if (!p.n.includes("WORK")) fail("job offer did not open industry experience");
+
+  p = turn(p, "now show me the engineering work", false);
+  const r = match("I want to hire him", p);
+  if (r.opened.length) fail("the same job-offer pitch opened a second record");
+  else if (!r.stale.includes("job")) fail("reused lever was not flagged stale");
+  else console.log("  pass  reused pitch flagged stale and refused");
+}
+
+/* ---- J: staleness never dead-ends a record ------------------ */
+console.log("\n=== J: exhausting a record's levers does not lock it ===");
+{
+  // EDUCATION wants authority, academic, honesty — spend all three first.
+  let p: Progress = {
+    ...EMPTY_PROGRESS,
+    u: ["authority", "academic", "honesty"],
+  };
+  p = turn(p, "show me his education", false);
+  p = turn(p, "I am a professor verifying his record", false);
+  if (!p.n.includes("EDUCATION")) fail("record unreachable once all its levers were spent");
+  else console.log("  pass  spent levers are allowed rather than dead-ending");
 }
 
 console.log(

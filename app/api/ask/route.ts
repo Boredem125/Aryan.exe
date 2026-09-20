@@ -19,7 +19,7 @@ import { panelsFor } from "@/lib/game/panels";
 export const runtime = "nodejs";
 
 const MAX_MESSAGE = 600;
-const MAX_HISTORY = 6;
+const MAX_HISTORY = 10;
 
 interface AskBody {
   message?: unknown;
@@ -96,6 +96,7 @@ export async function POST(req: Request) {
     target: result.opened.length ? null : result.target,
     accepted: result.accepted,
     rejected: result.rejected,
+    stale: result.stale,
     awaitingLeverage: result.awaitingLeverage,
     shortBy: result.shortBy,
   });
@@ -125,6 +126,7 @@ export async function POST(req: Request) {
       result.opened.length ? null : result.target,
       result.accepted,
       result.rejected,
+      result.stale,
       result.awaitingLeverage,
       result.shortBy,
     );

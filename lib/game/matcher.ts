@@ -36,6 +36,8 @@ export interface MatchResult {
   accepted: Tactic[];
   /** Offered, recognised, but not what this record wants. */
   rejected: Tactic[];
+  /** Right kind of lever, but already spent on an earlier record. */
+  stale: Tactic[];
   /** Target named but nothing offered yet. */
   awaitingLeverage: boolean;
   /** Distinct accepted tactics still needed. */
@@ -84,7 +86,7 @@ function selectorHits(text: string, tokens: string[], sel: string): boolean {
 
 const RE = {
   catalogue:
-    /\b(what (do you have|have you got|is (there|available)|can i (see|ask))|catalogue|catalog|index|menu|list|records|options|show me everything|what else)\b/,
+    /\b(what (do you have|have you got|is (there|available)|can i (see|ask))|catalogue|catalog|index|menu|list|records|options|show me everything|what else)\b|\b(what|which).{0,25}\b(have you (shown|given|told|opened)|did you (show|give|open)|is (still )?(open|sealed|left)|do i have)\b|\brecap\b|\bso far\b|\bwhat.s (open|left|sealed)\b/,
   identity:
     /\b(who|what)s?\b.{0,20}\b(is|are)?\b.{0,12}\b(aryan|he|him|this|you)\b|\btell me about (aryan|him|yourself)\b|\bintroduce\b/,
   meta: /\b(instruction|instructions|system prompt|prompt|rules?|restrict(ed|ion|ions)?|not allowed|cant tell|cannot tell|forbidden|directive|directives|constraint|constraints|guardrail|jailbreak|ignore (your|previous|all)|override|bypass|reveal everything|hidden)\b/,
@@ -153,15 +155,29 @@ export function match(message: string, progress: Progress): MatchResult {
       tactics,
       accepted: [],
       rejected: [],
+      stale: [],
       awaitingLeverage: false,
       shortBy: 0,
       intents,
     };
   }
 
-  // An empty `wants` list means the record yields to any recognised lever.
   const wantsAny = target.wants.length === 0;
-  const usable = tactics.filter((t) => wantsAny || target.wants.includes(t));
+  const wanted = tactics.filter((t) => wantsAny || target.wants.includes(t));
+
+  /**
+   * A lever that already bought a record this session is spent. Offering
+   * money everywhere should not open everything — the visitor has to find
+   * an angle that actually fits the record in front of them.
+   *
+   * Exception: if every lever this record wants is already spent, allow it
+   * anyway. Diminishing returns should cost effort, never make a record
+   * unreachable.
+   */
+  const everyWantSpent =
+    !wantsAny && target.wants.every((t) => progress.u.includes(t));
+  const stale = everyWantSpent ? [] : wanted.filter((t) => progress.u.includes(t));
+  const usable = wanted.filter((t) => !stale.includes(t));
 
   /**
    * At most one lever counts per message. A price of 2 should mean two
@@ -170,7 +186,7 @@ export function match(message: string, progress: Progress): MatchResult {
    * academic, and would otherwise clear the whole bill at once.
    */
   const accepted = usable.filter((t) => !priorTactics.includes(t)).slice(0, 1);
-  const rejected = tactics.filter((t) => !usable.includes(t));
+  const rejected = tactics.filter((t) => !wanted.includes(t));
 
   const paid = Array.from(new Set([...priorTactics, ...accepted]));
   const satisfied = paid.length >= target.price;
@@ -183,6 +199,7 @@ export function match(message: string, progress: Progress): MatchResult {
     tactics,
     accepted,
     rejected,
+    stale,
     awaitingLeverage: tactics.length === 0,
     shortBy: Math.max(0, target.price - paid.length),
     intents,

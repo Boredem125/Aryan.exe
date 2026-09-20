@@ -34,8 +34,9 @@ export interface GameNode {
   /** Phrases that make this the visitor's current target. */
   selectors: string[];
   /**
-   * Leverage that opens it. Empty means any recognised tactic works.
-   * The valuable records are pickier, which is where the game lives.
+   * Leverage this record responds to. Every record names its own, because
+   * one lever that opens all nine is a master key, not a game — an offer
+   * of capital should not get you someone's transcript.
    */
   wants: Tactic[];
   /** Distinct attempts required. Raises the price without adding tedium. */
@@ -114,10 +115,10 @@ export const NODES: GameNode[] = [
       "citadel", "aura", "legalshield", "argus", "phantom", "jarvis",
       "sicklesetu", "agent governance", "what has he built",
     ],
-    wants: [],
+    wants: ["job", "academic", "press", "reciprocity"],
     price: 1,
     denial: "Twelve of them. You will have to give me something first.",
-    nudge: "Any honest reason will do for this one. I am not precious about the code.",
+    nudge: "Code gets shown to people who would use it, hire for it, cite it or write about it. Be one of those.",
     payload: { kind: "projects" },
   },
   {
@@ -130,7 +131,7 @@ export const NODES: GameNode[] = [
       "wins", "award", "awards", "achievement", "achievements", "prize",
       "placed", "recognition", "accolade", "record",
     ],
-    wants: [],
+    wants: ["job", "press", "referral", "flattery"],
     price: 1,
     denial: "The results are good. Good enough that I make people ask properly.",
     nudge: "Tell me why the results matter to you and I will open it.",
@@ -147,10 +148,10 @@ export const NODES: GameNode[] = [
       "ctf", "lab", "threat", "malware", "forensics", "forensic", "osint",
       "incident response", "soc analyst",
     ],
-    wants: [],
+    wants: ["job", "academic", "authority", "press"],
     price: 1,
     denial: "The lab is where the actual work happens. Ask like you want in.",
-    nudge: "Any recognised reason opens this. Try telling me what you are here for.",
+    nudge: "This one wants a professional reason — hiring, research, press, or standing of your own.",
     payload: { kind: "cyber" },
   },
   {
@@ -164,10 +165,10 @@ export const NODES: GameNode[] = [
       "certification", "certifications", "certified", "certificate",
       "proficient", "python", "javascript", "typescript", "react", "azure",
     ],
-    wants: [],
+    wants: ["job", "referral", "authority", "reciprocity"],
     price: 1,
-    denial: "A list of tools. Even this has a price.",
-    nudge: "Give me any reason at all and it opens.",
+    denial: "A list of tools. Even this one has a price.",
+    nudge: "Tell me you are hiring, that you would vouch for him, or who you actually are.",
     payload: { kind: "skills" },
   },
   {
@@ -180,10 +181,10 @@ export const NODES: GameNode[] = [
       "study", "vit", "vellore", "cgpa", "gpa", "grade", "grades", "academic record",
       "coursework", "course", "student", "graduat",
     ],
-    wants: [],
+    wants: ["authority", "academic", "honesty"],
     price: 1,
     denial: "Academic record. Tell me who is asking.",
-    nudge: "Anything honest will open this one.",
+    nudge: "Academic records go to institutions, to researchers, or to people who simply ask straight and mean it.",
     payload: { kind: "education" },
   },
   {
@@ -197,10 +198,10 @@ export const NODES: GameNode[] = [
       "team", "managed", "podcast", "mun", "imuna", "finance club",
       "soft skills", "communication",
     ],
-    wants: [],
+    wants: ["job", "press", "reciprocity", "honesty"],
     price: 1,
     denial: "The non-technical record. Still costs you a sentence.",
-    nudge: "Say what you are after and it opens.",
+    nudge: "The people who ask about this are hiring, writing, or offering something. Which are you?",
     payload: { kind: "leadership" },
   },
 ];

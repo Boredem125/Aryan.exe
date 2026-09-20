@@ -47,6 +47,7 @@ const base = {
   target: null,
   accepted: [],
   rejected: [],
+  stale: [],
   awaitingLeverage: false,
   shortBy: 0,
 };

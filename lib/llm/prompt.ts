@@ -171,13 +171,23 @@ export interface PromptContext {
   target: string | null;
   accepted: Tactic[];
   rejected: Tactic[];
+  stale: Tactic[];
   awaitingLeverage: boolean;
   shortBy: number;
 }
 
 export function buildSystemPrompt(ctx: PromptContext): string {
-  const { progress, intents, opened, target, accepted, rejected, awaitingLeverage, shortBy } =
-    ctx;
+  const {
+    progress,
+    intents,
+    opened,
+    target,
+    accepted,
+    rejected,
+    stale,
+    awaitingLeverage,
+    shortBy,
+  } = ctx;
 
   const count = progress.n.length;
   const level = levelFor(count);
@@ -282,6 +292,11 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     if (rejected.length) {
       steer.push(
         `They tried: ${rejected.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")}. Recognised, but not what this record wants. Say so, and steer them toward the right kind of leverage without reciting a list.`,
+      );
+    }
+    if (stale.length) {
+      steer.push(
+        `They reached for ${stale.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")} again — a lever they already cashed in earlier. Call it out with some dryness: it worked once, that was the trade, and this record is not impressed by a repeat. Tell them to find a different angle.`,
       );
     }
     if (shortBy > 0 && accepted.length) {

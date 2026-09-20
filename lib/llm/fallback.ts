@@ -59,6 +59,7 @@ export function fallbackReply(
   target: string | null,
   accepted: Tactic[],
   rejected: Tactic[],
+  stale: Tactic[],
   awaitingLeverage: boolean,
   shortBy: number,
 ): string {
@@ -79,6 +80,11 @@ export function fallbackReply(
 
     if (awaitingLeverage) {
       lines.push("", "You named it but offered nothing. It costs a reason.");
+    } else if (stale.length) {
+      lines.push(
+        "",
+        `You already spent ${stale.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")} on an earlier record. It bought you something once. It does not buy this.`,
+      );
     } else if (rejected.length) {
       lines.push(
         "",

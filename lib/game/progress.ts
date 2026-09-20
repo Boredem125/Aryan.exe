@@ -19,16 +19,29 @@ const VERSION = 2;
 
 export interface Progress {
   v: number;
-  /** Opened record ids. */
+  /** Opened record ids, in the order they were opened. */
   n: string[];
   /** Current target, if the visitor has picked one. */
   k: string | null;
   /** Distinct tactics already spent on the current target. */
   a: Tactic[];
+  /**
+   * Every lever that has already bought something this session. A pitch
+   * that worked once is worth less the second time — otherwise one good
+   * line opens the whole profile.
+   */
+  u: Tactic[];
   t: number;
 }
 
-export const EMPTY_PROGRESS: Progress = { v: VERSION, n: [], k: null, a: [], t: 0 };
+export const EMPTY_PROGRESS: Progress = {
+  v: VERSION,
+  n: [],
+  k: null,
+  a: [],
+  u: [],
+  t: 0,
+};
 
 function secret(): string {
   const s = process.env.PROGRESS_SECRET;
@@ -81,11 +94,19 @@ export function decodeProgress(token: string | undefined | null): Progress {
     );
     const k =
       typeof parsed.k === "string" && isValidNodeId(parsed.k) ? parsed.k : null;
-    const a = Array.isArray(parsed.a)
-      ? Array.from(new Set(parsed.a.filter((x): x is Tactic => typeof x === "string")))
-      : [];
+    const tacticList = (v: unknown): Tactic[] =>
+      Array.isArray(v)
+        ? Array.from(new Set(v.filter((x): x is Tactic => typeof x === "string")))
+        : [];
 
-    return { v: VERSION, n, k, a, t: typeof parsed.t === "number" ? parsed.t : 0 };
+    return {
+      v: VERSION,
+      n,
+      k,
+      a: tacticList(parsed.a),
+      u: tacticList(parsed.u),
+      t: typeof parsed.t === "number" ? parsed.t : 0,
+    };
   } catch {
     return EMPTY_PROGRESS;
   }
@@ -98,11 +119,14 @@ export function openRecords(p: Progress, ids: string[]): Progress {
   for (const id of ids) if (isValidNodeId(id)) n.add(id);
   // Opening the target clears it, so the next question starts fresh.
   const clearTarget = p.k !== null && ids.includes(p.k);
+  // Whatever paid for this record is now spent goods.
+  const u = ids.length ? Array.from(new Set([...p.u, ...p.a])) : p.u;
   return {
     v: VERSION,
     n: Array.from(n),
     k: clearTarget ? null : p.k,
     a: clearTarget ? [] : p.a,
+    u,
     t: stamp(),
   };
 }
@@ -127,6 +151,7 @@ export function progressSummary(p: Progress) {
     total: TOTAL_NODES,
     target: p.k,
     spent: p.a,
+    used: p.u,
     level: level.n,
     levelCode: level.code,
     levelLabel: level.label,
