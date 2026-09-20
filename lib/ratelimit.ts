@@ -16,9 +16,9 @@ interface Bucket {
   last: number;
 }
 
-const BUCKET_SIZE = 8;
-/** Tokens per second — roughly one question every six seconds, sustained. */
-const REFILL_RATE = 1 / 6;
+const BUCKET_SIZE = 14;
+/** Tokens per second — roughly one question every four seconds, sustained. */
+const REFILL_RATE = 1 / 4;
 const GLOBAL_DAILY_CAP = 2000;
 const SWEEP_AFTER_MS = 30 * 60 * 1000;
 

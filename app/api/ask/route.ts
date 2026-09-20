@@ -12,6 +12,7 @@ import { chat, groqConfigured, type ChatMessage } from "@/lib/llm/groq";
 import { fallbackReply, throttleReply } from "@/lib/llm/fallback";
 import { checkLimit, clientIp } from "@/lib/ratelimit";
 import { handleCommand } from "@/lib/game/commands";
+import { panelsFor } from "@/lib/game/panels";
 
 export const runtime = "nodejs";
 
@@ -48,9 +49,17 @@ export async function POST(req: Request) {
     const next = command.unlocks?.length
       ? addNodes(progress, command.unlocks)
       : progress;
+
+    // `open <node>` asks for a panel rather than prose. panelsFor filters
+    // against verified progress, so an id the visitor has not earned
+    // returns nothing even if they typed it directly.
+    const openMatch = command.reply.match(/^__OPEN__(.+)$/);
+    const requested = openMatch ? [openMatch[1]] : (command.unlocks ?? []);
+
     return NextResponse.json({
-      reply: command.reply,
+      reply: openMatch ? "" : command.reply,
       unlocks: command.unlocks ?? [],
+      panels: panelsFor(requested, next),
       token: encodeProgress(next),
       summary: progressSummary(next),
       source: "system",
@@ -63,6 +72,7 @@ export async function POST(req: Request) {
       {
         reply: throttleReply(),
         unlocks: [],
+        panels: [],
         token: encodeProgress(progress),
         summary: progressSummary(progress),
         source: "throttle",
@@ -133,6 +143,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     reply,
     unlocks: result.unlocks,
+    panels: panelsFor(result.unlocks, next),
     token: encodeProgress(next),
     summary: progressSummary(next),
     source,

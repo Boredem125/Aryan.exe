@@ -7,7 +7,7 @@
    ============================================================ */
 
 const ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
-const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_MODEL = "openai/gpt-oss-120b";
 const TIMEOUT_MS = 8000;
 
 export type GroqFailure =
@@ -30,10 +30,16 @@ export function groqConfigured(): boolean {
   return Boolean(process.env.GROQ_API_KEY);
 }
 
+/** Reasoning models that accept (and need) an explicit effort setting. */
+function supportsReasoningEffort(model: string): boolean {
+  return /gpt-oss|qwen3/i.test(model);
+}
+
 async function once(messages: ChatMessage[]): Promise<GroqResult> {
   const key = process.env.GROQ_API_KEY;
   if (!key) return { ok: false, reason: "no-key" };
 
+  const model = process.env.GROQ_MODEL || DEFAULT_MODEL;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -45,11 +51,15 @@ async function once(messages: ChatMessage[]): Promise<GroqResult> {
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
-        model: process.env.GROQ_MODEL || DEFAULT_MODEL,
+        model,
         messages,
         temperature: 0.7,
-        max_tokens: 320,
+        max_tokens: 500,
         top_p: 0.9,
+        // gpt-oss is a reasoning model: without this it spends the token
+        // budget thinking and returns empty content. Only sent for models
+        // that accept it, since others reject the parameter.
+        ...(supportsReasoningEffort(model) ? { reasoning_effort: "low" } : {}),
       }),
       signal: controller.signal,
     });

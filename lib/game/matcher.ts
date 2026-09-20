@@ -82,7 +82,7 @@ function triggerHits(text: string, tokens: string[], trigger: string): boolean {
 
 const RE = {
   identity:
-    /\b(who|what).{0,20}\b(is|are)\b.{0,12}\b(aryan|he|him|this|you)\b|\btell me about (aryan|him|yourself)\b|\bintroduce\b/,
+    /\b(who|what)s?\b.{0,20}\b(is|are)?\b.{0,12}\b(aryan|he|him|this|you)\b|\btell me about (aryan|him|yourself)\b|\bintroduce\b/,
   projectsBroad:
     /\b(what|which).{0,30}\b(built|build|made|make|created|shipped|worked on|projects?)\b|\bshow me.{0,15}\b(projects?|work)\b|\bhis (work|projects?)\b/,
   roleFrame:
