@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next.js
+.next/
+out/
+build/
+next-env.d.ts
+
+# env — NEVER commit secrets
+.env
+.env.local
+.env*.local
+
+# private: company-tailored resume variants stay local.
+# The canonical public CV lives at public/Aryan_Hundia_CV.pdf and IS committed.
+/*.pdf
+resumes/
+
+# misc
+.DS_Store
+*.pem
+.vercel
+*.tsbuildinfo
+npm-debug.log*
