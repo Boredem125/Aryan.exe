@@ -327,6 +327,42 @@ console.log("\n=== O: no classifier means no change and no gating ===");
 }
 
 
+/* ---- P: a refusal cannot be written over a success ---------- */
+console.log("\n=== P: the model may not overrule the server ===");
+{
+  // Observed in the wild: the competition record opened and rendered, while
+  // the reply above it said the lever was not acceptable and that the record
+  // "can be opened" — the model judging the pitch itself and narrating a
+  // refusal over a success.
+  const refusals = [
+    "That lever is not acceptable. Provide a concrete offer and the competition record can be opened.",
+    "The record remains sealed.",
+    "Access denied.",
+    "That does not qualify as a lever.",
+  ];
+  for (const r of refusals) {
+    if (replyContradictsState(r, ["HACK"]) !== "false-refusal") {
+      fail(`a refusal written over an opened record was not caught: "${r.slice(0, 40)}"`);
+    }
+  }
+
+  // Honest replies must survive, including a success that lists what is
+  // still sealed — "sealed" alone must not trip the check.
+  const honest: [string, string[]][] = [
+    ["Offer of employment — accepted. Note the TPRM platform.", ["WORK"]],
+    ["A referral. Cheap to promise. Still sealed: Patent filings, Contact & CV.", ["STACK"]],
+    ["The record remains sealed. Offer a referral and it opens.", []],
+  ];
+  for (const [r, opened] of honest) {
+    if (replyContradictsState(r, opened) !== null) {
+      fail(`an honest reply was rejected: "${r.slice(0, 40)}"`);
+    }
+  }
+
+  console.log("  pass  refusals over a success are caught; honest replies survive");
+}
+
+
 console.log(
   failures === 0 ? "\nPLAYTHROUGH PASSED\n" : `\nPLAYTHROUGH FAILED — ${failures} problem(s)\n`,
 );

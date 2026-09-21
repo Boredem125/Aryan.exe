@@ -23,7 +23,20 @@ const CLAIMS_OPEN =
 const CLAIMS_UNAVAILABLE =
   /\b(not available|unavailable|cannot (show|display|provide|access)|can'?t (show|display|provide)|no (further )?details|details are not|not accessible|in this interface)\b/i;
 
-export type RejectReason = "false-open" | "false-unavailable";
+/**
+ * Phrases that refuse the request outright. Caught only when a record DID
+ * open, because the model sometimes makes its own judgement about whether a
+ * pitch deserved to work and writes a refusal over the top of a success —
+ * leaving the visitor reading "that lever is not acceptable" directly above
+ * the record it just unsealed.
+ *
+ * Deliberately narrow. A legitimate reply often ends "Still sealed: Patent
+ * filings, Contact & CV", so a bare mention of "sealed" must not trip this.
+ */
+const CLAIMS_REFUSED =
+  /\b(not acceptable|unacceptable|not a (valid|viable|recognis|recogniz)|does not qualify|not sufficient|insufficient|access denied)\b|\b(remains?|stays?|is still) sealed\b|\b(cannot|can ?not|can'?t|will not|won'?t) be (opened|unlocked|released)\b|\b(can|could|will) be opened\b/i;
+
+export type RejectReason = "false-open" | "false-unavailable" | "false-refusal";
 
 /**
  * Returns a reason when the model's reply contradicts reality, or null
@@ -41,6 +54,12 @@ export function replyContradictsState(
   // Something DID open — the panel is on screen — but the reply denies it.
   if (opened.length > 0 && CLAIMS_UNAVAILABLE.test(reply)) {
     return "false-unavailable";
+  }
+
+  // Something opened and the reply refuses anyway. The model does not get
+  // to overrule the server on whether a pitch worked.
+  if (opened.length > 0 && CLAIMS_REFUSED.test(reply)) {
+    return "false-refusal";
   }
 
   return null;
