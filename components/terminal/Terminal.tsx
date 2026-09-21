@@ -75,6 +75,8 @@ export function Terminal({
   const [token, setToken] = useState("");
   const [summary, setSummary] = useState<ProgressSummary | null>(null);
   const [nudged, setNudged] = useState(false);
+  /** True when the visitor has scrolled up and we should stop following. */
+  const [pinned, setPinned] = useState(false);
 
   const nextId = useRef(1);
   /* `busy` is state, so two sends dispatched in the same tick (Enter
@@ -82,6 +84,7 @@ export function Terminal({
      fire. A ref settles it synchronously. */
   const sending = useRef(false);
   const booted = useRef(false);
+  const followRef = useRef(true);
   const history = useRef<string[]>([]);
   const histIdx = useRef(-1);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -122,6 +125,8 @@ export function Terminal({
       }
 
       sending.current = true;
+      followRef.current = true;
+      setPinned(false);
       history.current.unshift(text);
       histIdx.current = -1;
       push({ role: "user", text, reveal: -1 });
@@ -217,10 +222,32 @@ export function Terminal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* Follow new output, but only while the visitor is already at the bottom.
+     This effect runs on every render — including every typewriter tick —
+     so forcing scrollTop unconditionally made it impossible to read back
+     through the transcript: any attempt to scroll up was yanked down again
+     a few milliseconds later. */
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && followRef.current) el.scrollTop = el.scrollHeight;
   });
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = distanceFromBottom < 60;
+    followRef.current = atBottom;
+    setPinned(!atBottom);
+  };
+
+  const jumpToBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    followRef.current = true;
+    setPinned(false);
+    el.scrollTop = el.scrollHeight;
+  };
 
   /* Typewriter, skipped entirely under prefers-reduced-motion. */
   useEffect(() => {
@@ -330,7 +357,7 @@ export function Terminal({
         </div>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} onScroll={onScroll} className="relative flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-6" aria-live="polite">
           {messages.map((m) => {
             const shown = m.reveal >= 0 ? m.text.slice(0, m.reveal) : m.text;
@@ -363,6 +390,18 @@ export function Terminal({
           ) : null}
         </div>
       </div>
+
+      {pinned ? (
+        <div className="pointer-events-none relative z-10">
+          <button
+            type="button"
+            onClick={jumpToBottom}
+            className="pointer-events-auto absolute bottom-3 left-1/2 -translate-x-1/2 border border-line-bright bg-surface px-3 py-1.5 font-mono text-[11px] text-text-dim shadow-lg transition-colors hover:border-accent hover:text-accent"
+          >
+            ↓ jump to latest
+          </button>
+        </div>
+      ) : null}
 
       <div className="shrink-0 border-t border-line bg-surface/60 backdrop-blur">
         <form
