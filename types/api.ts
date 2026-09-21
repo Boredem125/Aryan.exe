@@ -26,6 +26,7 @@ export interface ProgressSummary {
   target: string | null;
   spent: string[];
   used: string[];
+  usedLabels: string[];
   level: number;
   levelCode: string;
   levelLabel: string;

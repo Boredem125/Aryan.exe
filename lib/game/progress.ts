@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { isValidNodeId, TOTAL_NODES } from "./nodes";
 import { levelFor } from "./levels";
-import type { Tactic } from "./tactics";
+import { tacticDef, type Tactic } from "./tactics";
 
 /* ============================================================
    Progress tokens.
@@ -152,6 +152,9 @@ export function progressSummary(p: Progress) {
     target: p.k,
     spent: p.a,
     used: p.u,
+    // Human-readable, so the client can explain a resumed session without
+    // importing lib/game/tactics — those patterns are the answer key.
+    usedLabels: p.u.map((t) => tacticDef(t)?.label ?? t),
     level: level.n,
     levelCode: level.code,
     levelLabel: level.label,

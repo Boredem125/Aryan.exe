@@ -20,7 +20,17 @@ interface Message {
   reveal: number;
 }
 
-function greeting(rows: CatalogueRow[], open: Set<string>) {
+/**
+ * Progress persists in localStorage, so a visitor can arrive mid-game with
+ * records already open and levers already spent. Without saying so, the
+ * system later tells them "you already spent X" about something they have
+ * no memory of doing, which reads as a bug rather than a rule.
+ */
+function greeting(rows: CatalogueRow[], summary?: ProgressSummary | null) {
+  const open = new Set(summary?.nodes ?? []);
+  const spent = summary?.usedLabels ?? [];
+  const resuming = open.size > 0 || spent.length > 0;
+
   const list = rows
     .map(
       (r) =>
@@ -28,7 +38,19 @@ function greeting(rows: CatalogueRow[], open: Set<string>) {
     )
     .join("\n");
 
-  return `PORTFOLIO INTELLIGENCE SYSTEM — ONLINE
+  const header = resuming
+    ? [
+        `SESSION RESUMED — ${open.size}/${rows.length} records already open.`,
+        spent.length
+          ? `Levers already spent: ${spent.join(", ")}. Those will not work again.`
+          : "",
+        "Type reset to wipe this and start clean.",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "PORTFOLIO INTELLIGENCE SYSTEM — ONLINE";
+
+  return `${header}
 
 I hold ${rows.length} records. You can see the labels. You cannot see inside.
 
@@ -110,7 +132,7 @@ export function Terminal({
         clearToken();
         setToken("");
         setMessages([
-          { id: nextId.current++, role: "system", text: greeting(rows, new Set()), reveal: -1 },
+          { id: nextId.current++, role: "system", text: greeting(rows), reveal: -1 },
         ]);
         setInput("");
         fetch("/api/ask?token=")
@@ -204,7 +226,7 @@ export function Terminal({
           {
             id: nextId.current++,
             role: "system",
-            text: greeting(rows, new Set(d.summary?.nodes ?? [])),
+            text: greeting(rows, d.summary),
             reveal: -1,
           },
         ]);
@@ -215,7 +237,7 @@ export function Terminal({
       })
       .catch(() => {
         setMessages([
-          { id: nextId.current++, role: "system", text: greeting(rows, new Set()), reveal: -1 },
+          { id: nextId.current++, role: "system", text: greeting(rows), reveal: -1 },
         ]);
       });
     // Intentionally once, on mount.
