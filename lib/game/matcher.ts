@@ -106,16 +106,21 @@ function detectIntents(text: string): Intent[] {
 }
 
 /**
- * Saying a record's own label should settle it. "engineering work" used to
- * tie one-all — PROJECTS on "engineering", WORK on "work" — and WORK won on
- * array order, so asking about the engineering work landed you in the
- * industry-experience record.
+ * How deliberately the message names this record. Saying a record's own
+ * label should settle it: "engineering work" used to tie one-all — PROJECTS
+ * on "engineering", WORK on "work" — and WORK won on array order, so asking
+ * about the engineering work answered about the industry experience.
+ *
+ * A full label outranks a bare id, because some ids are ordinary words.
+ * WORK collides with "work", which would reinstate that same tie.
  */
-function namesLabel(node: GameNode, tokens: string[]): boolean {
+function namingBonus(node: GameNode, tokens: string[]): number {
   const words = normalize(node.label)
     .split(" ")
     .filter((w) => w.length >= 3);
-  return words.length > 0 && words.every((w) => tokens.includes(w));
+  if (words.length > 0 && words.every((w) => tokens.includes(w))) return 4;
+  if (tokens.includes(node.id.toLowerCase())) return 2;
+  return 0;
 }
 
 /** Which record is this message pointing at? Most selectors wins. */
@@ -130,7 +135,7 @@ function pickTarget(
     if (open.has(node.id)) continue;
     const score =
       node.selectors.filter((s) => selectorHits(text, tokens, s)).length +
-      (namesLabel(node, tokens) ? 3 : 0);
+      namingBonus(node, tokens);
     if (score > bestScore) {
       best = node;
       bestScore = score;

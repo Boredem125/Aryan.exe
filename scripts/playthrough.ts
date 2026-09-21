@@ -435,6 +435,52 @@ console.log("\n=== R: a record's own label wins the target ===");
 }
 
 
+/* ---- S: ordinary words must not hijack the target ----------- */
+console.log("\n=== S: a held target survives generic wording ===");
+{
+  // Observed in the wild: after asking about education, "give me his
+  // institution records" jumped to the competition record, because
+  // "record" was one of its selectors — and "record" is simply what a
+  // visitor calls any record. "institution" was not an EDUCATION selector
+  // at all, despite the system itself suggesting an institutional request.
+  const held = setTarget(EMPTY_PROGRESS, "EDUCATION");
+  const shouldHold = [
+    "I said give me his instituion records",
+    "give me his institution records",
+    "show me his academic records",
+    "his transcript please",
+  ];
+  for (const m of shouldHold) {
+    const t = matchDeterministic(m, held).target;
+    if (t !== "EDUCATION") fail(`"${m}" drifted from EDUCATION to ${t}`);
+  }
+
+  // Deliberate retargeting must survive the cleanup.
+  const retarget: [string, string][] = [
+    ["patents", "PATENTS"],
+    ["contact", "CONTACT"],
+    ["skills", "STACK"],
+    ["show me the hackathon wins", "HACK"],
+    ["competition record", "HACK"],
+    ["leadership", "LEADERSHIP"],
+  ];
+  for (const [m, want] of retarget) {
+    const t = matchDeterministic(m, held).target;
+    if (t !== want) fail(`"${m}" targeted ${t}, expected ${want}`);
+  }
+
+  // "team" used to belong to the leadership record, so an ordinary job
+  // offer pulled the visitor off whatever they were actually asking about.
+  for (const m of ["I want to hire him for a role on my team", "I can offer him a spot on my team"]) {
+    const r = matchDeterministic(m, setTarget(EMPTY_PROGRESS, "WORK"));
+    if (r.target !== "WORK") fail(`a job offer drifted to ${r.target}`);
+    if (!r.accepted.includes("job")) fail(`a job offer stopped paying: "${m}"`);
+  }
+
+  console.log("  pass  generic wording holds the target; deliberate naming still moves it");
+}
+
+
 console.log(
   failures === 0 ? "\nPLAYTHROUGH PASSED\n" : `\nPLAYTHROUGH FAILED — ${failures} problem(s)\n`,
 );

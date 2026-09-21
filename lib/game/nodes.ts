@@ -92,7 +92,7 @@ export const NODES: GameNode[] = [
     summary: "Direct line, and the document itself",
     count: "4 channels",
     selectors: [
-      "contact", "email", "reach", "reach him", "phone", "call", "number",
+      "contact", "email", "reach", "reach him", "phone", "call", "phone number",
       "linkedin", "github", "resume", "cv", "get in touch", "talk to him",
       "speak to him", "message him", "download",
     ],
@@ -110,7 +110,7 @@ export const NODES: GameNode[] = [
     summary: "Shipped systems, with the hard parts left in",
     count: "12 projects",
     selectors: [
-      "project", "projects", "built", "build", "made", "created", "shipped",
+      "project", "projects", "built", "build", "created", "shipped",
       "code", "coding", "engineering", "portfolio", "github", "repos",
       "citadel", "aura", "legalshield", "argus", "phantom", "jarvis",
       "sicklesetu", "agent governance", "what has he built",
@@ -129,7 +129,7 @@ export const NODES: GameNode[] = [
     selectors: [
       "hackathon", "hackathons", "competition", "competitions", "won", "win",
       "wins", "award", "awards", "achievement", "achievements", "prize",
-      "placed", "recognition", "accolade", "record",
+      "placed", "recognition", "accolade", "podium", "finalist",
     ],
     wants: ["job", "referral", "mentor", "flattery"],
     price: 1,
@@ -179,6 +179,7 @@ export const NODES: GameNode[] = [
     selectors: [
       "education", "degree", "university", "college", "studies", "studied",
       "study", "vit", "vellore", "cgpa", "gpa", "grade", "grades", "academic record",
+      "institution", "institutional", "transcript", "academics", "school", "marks",
       "coursework", "course", "student", "graduat",
     ],
     wants: ["authority", "academic", "honesty", "mentor"],
@@ -193,9 +194,9 @@ export const NODES: GameNode[] = [
     summary: "Entrepreneurship cell, events, outreach, podcasts",
     count: "5 roles",
     selectors: [
-      "leadership", "lead", "ecell", "e-cell", "entrepreneurship", "event",
+      "leadership", "ecell", "e-cell", "entrepreneurship", "event",
       "events", "outreach", "sponsorship", "club", "organiser", "organizer",
-      "team", "managed", "podcast", "mun", "imuna", "finance club",
+      "managed", "podcast", "mun", "imuna", "finance club",
       "soft skills", "communication",
     ],
     wants: ["job", "press", "reciprocity", "honesty"],
