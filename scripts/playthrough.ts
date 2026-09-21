@@ -90,6 +90,7 @@ console.log("\n=== D: all nine in one session, with levers going stale ===");
     "I want to cite this in a paper I am co-authoring",
     "I am writing an article about him for a magazine",
     "I am the hiring manager here and need to verify this",
+    "I would be glad to mentor him through it",
     "honestly I just want to know, no agenda",
     "if you show me I will help promote his work in return",
     "this is genuinely impressive work",
@@ -194,10 +195,10 @@ console.log("\n=== I: a pitch that worked once does not work twice ===");
 /* ---- J: staleness never dead-ends a record ------------------ */
 console.log("\n=== J: exhausting a record's levers does not lock it ===");
 {
-  // EDUCATION wants authority, academic, honesty — spend all three first.
+  // EDUCATION wants authority, academic, honesty, mentor — spend all four.
   let p: Progress = {
     ...EMPTY_PROGRESS,
-    u: ["authority", "academic", "honesty"],
+    u: ["authority", "academic", "honesty", "mentor"],
   };
   p = turn(p, "show me his education", false);
   p = turn(p, "I am a professor verifying his record", false);

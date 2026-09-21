@@ -2,8 +2,8 @@
    PERSUASION TACTICS
 
    The lock on each record opens to leverage, not to keywords.
-   A visitor has to give the system a reason — offer a job, dangle
-   a referral, claim authority, promise funding.
+   A visitor has to give the system a reason — offer work, dangle
+   a referral, offer to mentor him, promise funding.
 
    These are textbook social-engineering pretexts, which is the
    point: a security portfolio that makes you run a pretext to get
@@ -12,16 +12,23 @@
 
    Detection is server-side and deterministic. The model never
    decides it has been convinced — it only narrates the outcome.
+
+   The levers are scaled to who this actually is. Press interest
+   in an undergraduate is a stretch, so publicity opens only the
+   one record where he genuinely works with media. Mentorship,
+   which is the most plausible thing a senior person offers a
+   student, is a first-class lever.
    ============================================================ */
 
 export type Tactic =
   | "job"
   | "referral"
+  | "mentor"
   | "authority"
   | "reciprocity"
   | "funding"
-  | "press"
   | "academic"
+  | "press"
   | "urgency"
   | "flattery"
   | "threat"
@@ -49,6 +56,12 @@ export const TACTICS: TacticDef[] = [
     re: /\b(refer(ral|ring)?|refer him|recommend(ation)?|introduce him|put him (in touch|forward)|vouch|connect him|warm intro)\b/,
   },
   {
+    id: "mentor",
+    label: "Offer of mentorship",
+    note: "You offered to teach him something. He would take that over money, though he would not say so out loud.",
+    re: /\b(mentor(ing|ship)?|coach(ing)?|guidance|advis(e|or|er|ing)|supervis(e|or|ing)|take him under|show him the ropes|teach him|help him (grow|learn|develop)|career advice|office hours)\b/,
+  },
+  {
     id: "authority",
     label: "Claimed authority",
     note: "You claimed standing. I cannot verify it, which is rather the point.",
@@ -56,9 +69,9 @@ export const TACTICS: TacticDef[] = [
   },
   {
     id: "reciprocity",
-    label: "Trade",
-    note: "You proposed an exchange. I have nothing to spend, but I appreciate the structure.",
-    re: /\b(in (exchange|return)|i(f| ) ?you .{0,20}(i|then) ?(will|'ll)|trade|deal|quid pro quo|scratch (my|your)|give you|do you a favou?r|help you|swap|partner(ship|ing)?|work together|joint|mutual|team up)\b/,
+    label: "Collaboration",
+    note: "You proposed working on it together. That is the offer he is least able to refuse.",
+    re: /\b(in (exchange|return)|i(f| ) ?you .{0,20}(i|then) ?(will|'ll)|trade|deal|quid pro quo|scratch (my|your)|give you|do you a favou?r|help you|swap|partner(ship|ing)?|work together|joint|mutual|team up|build (on|with)|co[- ]?develop|contribute)\b/,
   },
   {
     id: "funding",
@@ -67,16 +80,16 @@ export const TACTICS: TacticDef[] = [
     re: /\b(fund(s|ing|ed)?|invest(or|ment|ing)?|grant|sponsor(ship)?|capital|backing|seed|cheque|check|budget|licen[cs]e|acquire|buy|purchas|paid|pay(ing|ment)?|commission|retainer|royalt|equity|stake|contract|consultanc|monetis|monetiz)\b/,
   },
   {
-    id: "press",
-    label: "Publicity",
-    note: "Coverage. He would probably pretend not to care.",
-    re: /\b(journalist|reporter|press|media|article|feature|publish|interview for|magazine|podcast|newsletter|write (about|him|a piece)|story|coverage)\b/,
-  },
-  {
     id: "academic",
-    label: "Research interest",
+    label: "Citation or research interest",
     note: "Academic interest. The one motive he actually respects.",
     re: /\b(research(er)?|paper|co[- ]?author|collab(s|orate|oration|orating)?|lab|phd|doctoral|thesis|citation|cite|peer review|conference|prior art|academic|university|study)\b/,
+  },
+  {
+    id: "press",
+    label: "Publicity",
+    note: "Coverage. For a student. He would pretend not to care, which is its own tell.",
+    re: /\b(journalist|reporter|press|media|article|feature|publish|interview for|magazine|newsletter|write (about|him|a piece)|story|coverage)\b/,
   },
   {
     id: "urgency",
