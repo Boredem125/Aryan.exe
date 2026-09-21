@@ -73,12 +73,17 @@ function build(node: GameNode): Panel | null {
         sections: [
           { items: job.highlights },
           { label: "Domains", tags: job.tags },
-          {
-            label: "Elsewhere",
-            items: experience
-              .filter((e) => e.org !== p.org)
-              .map((e) => `${e.role}, ${e.org} (${e.start} – ${e.end})`),
-          },
+          // The other roles used to be one-line stubs with no way to reach
+          // their detail, which left the panel listing things it would not
+          // explain. This record is "industry experience" — it carries all
+          // of it.
+          ...experience
+            .filter((e) => e.org !== p.org)
+            .map((e) => ({
+              label: `${e.org}${e.orgNote ? ` · ${e.orgNote}` : ""} — ${e.role}`,
+              body: `${e.location} · ${e.start} – ${e.end}`,
+              items: e.highlights,
+            })),
         ],
       };
     }

@@ -126,6 +126,21 @@ export function match(message: string, progress: Progress): MatchResult {
   // --- phase 2 first: we need the leverage to resolve the target ----
   const tactics = detectTactics(message);
 
+  /**
+   * Some words are both a record's name and a lever. "podcast" selects the
+   * leadership record and also reads as press interest, so "tell me about
+   * the podcast work" would target it and pay for it in one breath. Naming
+   * a record must never buy it, so leverage is re-detected with the target's
+   * own vocabulary stripped out, and only what survives counts.
+   */
+  const leverageWithout = (node: GameNode): Tactic[] => {
+    let stripped = ` ${text} `;
+    for (const sel of node.selectors) {
+      stripped = stripped.split(` ${sel} `).join(" ");
+    }
+    return detectTactics(stripped);
+  };
+
   // --- phase 1: target -------------------------------------
   const held = progress.k && !open.has(progress.k) ? progress.k : null;
   const hit = pickTarget(text, tokens, open);
@@ -163,7 +178,10 @@ export function match(message: string, progress: Progress): MatchResult {
   }
 
   const wantsAny = target.wants.length === 0;
-  const wanted = tactics.filter((t) => wantsAny || target.wants.includes(t));
+  const earned = leverageWithout(target);
+  const wanted = tactics.filter(
+    (t) => earned.includes(t) && (wantsAny || target.wants.includes(t)),
+  );
 
   /**
    * A lever that already bought a record this session is spent. Offering

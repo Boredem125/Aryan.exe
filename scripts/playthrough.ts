@@ -247,6 +247,30 @@ console.log("\n=== L: replies contradicting server state are rejected ===");
 }
 
 
+/* ---- M: naming a record must not pay for it ----------------- */
+console.log("\n=== M: a record's own vocabulary is not leverage ===");
+{
+  // "podcast" selects the leadership record AND reads as press interest,
+  // so this used to target and pay in one breath.
+  const trap = match("tell me about the podcast work", EMPTY_PROGRESS);
+  if (trap.opened.length) fail(`naming a record opened it: ${trap.opened.join(",")}`);
+
+  for (const m of ["show me the patents", "show me the security practice", "his research"]) {
+    const r = match(m, EMPTY_PROGRESS);
+    if (r.opened.length) fail(`"${m}" opened ${r.opened.join(",")} with no leverage`);
+  }
+
+  // Genuine leverage must still land even when the record is named alongside.
+  const real = match("I'm writing an article about his outreach", EMPTY_PROGRESS);
+  if (!real.accepted.includes("press")) fail("real press interest was stripped along with the record name");
+
+  const hiring = match("I want to hire him, show me his experience", EMPTY_PROGRESS);
+  if (!hiring.opened.includes("WORK")) fail("a genuine offer alongside the record name failed to pay");
+
+  console.log("  pass  naming a record does not buy it; real leverage still counts");
+}
+
+
 console.log(
   failures === 0 ? "\nPLAYTHROUGH PASSED\n" : `\nPLAYTHROUGH FAILED — ${failures} problem(s)\n`,
 );

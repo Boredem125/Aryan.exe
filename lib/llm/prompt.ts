@@ -61,11 +61,17 @@ function renderRecord(node: GameNode): string {
         `${job.location} · ${job.start} – ${job.end}`,
         ...job.highlights.map((h) => `- ${h}`),
         "",
-        "Other roles: " +
-          experience
-            .filter((e) => e.org !== p.org)
-            .map((e) => `${e.role} at ${e.org} (${e.start}–${e.end})`)
-            .join("; "),
+        // Full detail, not a name list — otherwise the panel shows these
+        // roles while you can say nothing about them when asked.
+        ...experience
+          .filter((e) => e.org !== p.org)
+          .map((e) =>
+            [
+              `#### ${e.org}${e.orgNote ? ` (${e.orgNote})` : ""} — ${e.role}`,
+              `${e.location} · ${e.start} – ${e.end}`,
+              ...e.highlights.map((h) => `- ${h}`),
+            ].join("\n"),
+          ),
       ].join("\n");
     }
 
