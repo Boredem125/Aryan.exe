@@ -179,6 +179,7 @@ export interface PromptContext {
   rejected: Tactic[];
   stale: Tactic[];
   pushed: Tactic[];
+  available: Tactic[];
   awaitingLeverage: boolean;
   shortBy: number;
 }
@@ -193,6 +194,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     rejected,
     stale,
     pushed,
+    available,
     awaitingLeverage,
     shortBy,
   } = ctx;
@@ -294,6 +296,15 @@ export function buildSystemPrompt(ctx: PromptContext): string {
   } else if (targetNode) {
     steer.push(
       `NOTHING OPENED THIS TURN. ${targetNode.label} is STILL SEALED. Do not imply otherwise, and do not describe its contents — you do not have them.`,
+    );
+    // Without this the model guesses, and it guesses wrong: it once told a
+    // visitor the leadership record wanted "funding, collaboration or a
+    // citation" when it accepts none of funding or citation, and sent them
+    // round in circles offering things that could never work.
+    steer.push(
+      available.length
+        ? `THIS RECORD ACCEPTS, RIGHT NOW: ${available.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")}. That list is exhaustive and already excludes anything they have spent. NEVER name a lever outside it — offering something this record does not take is a dead end, and sending someone down one is the worst thing you can do here. If they have tried more than once, just say the list plainly.`
+        : "THIS RECORD ACCEPTS: nothing is listed. Say so plainly rather than inventing a requirement.",
     );
     steer.push(
       `TARGET: ${targetNode.label}. It is still sealed. Refuse, in your own words, along the lines of: "${targetNode.denial}"`,

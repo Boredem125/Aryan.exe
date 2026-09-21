@@ -9,8 +9,9 @@ import {
   type Progress,
 } from "@/lib/game/progress";
 import { NODES, TOTAL_NODES, nodeById } from "@/lib/game/nodes";
-import { detectTactics } from "@/lib/game/tactics";
+import { detectTactics, TACTICS, type Tactic } from "@/lib/game/tactics";
 import { replyContradictsState } from "@/lib/llm/verify";
+import { handleCommand } from "@/lib/game/commands";
 
 /* ============================================================
    Simulates real visits against the matcher.
@@ -478,6 +479,95 @@ console.log("\n=== S: a held target survives generic wording ===");
   }
 
   console.log("  pass  generic wording holds the target; deliberate naming still moves it");
+}
+
+
+/* ---- T: a visitor can always see the way out ---------------- */
+console.log("\n=== T: no blind guessing, and no dead ends ===");
+{
+  // Reported: someone spent an entire session on the leadership record
+  // offering a referral, then collaboration, then money, then a job — and
+  // was never told that it takes none of referral or money, and that the
+  // job offer they kept repeating had been spent elsewhere. The reply even
+  // invented a lever list, telling them to offer "funding or a citation",
+  // neither of which this record accepts.
+  const stuck: Progress = {
+    ...setTarget(EMPTY_PROGRESS, "LEADERSHIP"),
+    u: ["job"],
+    n: ["WORK"],
+  };
+
+  // Every refusal must carry the real, exhaustive list of what is left.
+  const r = resolve("i will offer him a good money", stuck, null);
+  if (!r.available.length) fail("a refusal offered no route at all");
+  for (const t of r.available) {
+    const node = nodeById("LEADERSHIP")!;
+    if (!node.wants.includes(t)) fail(`offered a lever the record does not want: ${t}`);
+    if (stuck.u.includes(t)) fail(`offered a lever already spent: ${t}`);
+  }
+
+  // hint must name them outright rather than gesturing.
+  const h = handleCommand("hint", stuck)!.reply;
+  for (const word of ["Publicity", "Collaboration", "Plain honesty"]) {
+    if (!h.includes(word)) fail(`hint did not name an available lever: ${word}`);
+  }
+  if (!h.includes("Offer of employment")) fail("hint did not say which lever was spent");
+
+  // And each advertised route must genuinely work.
+  const exits: [string, Tactic][] = [
+    ["we'd collaborate on running an event with him", "reciprocity"],
+    ["I'm writing an article about the event", "press"],
+    ["honestly I just want to see it", "honesty"],
+  ];
+  for (const [msg, lever] of exits) {
+    const out = resolve(msg, stuck, null);
+    if (!out.opened.includes("LEADERSHIP")) {
+      fail(`an advertised route did not open the record: "${msg}" (${lever})`);
+    }
+  }
+
+  console.log("  pass  refusals name the real routes, and every route works");
+}
+
+/* ---- U: a lever's own word must map to that lever ----------- */
+console.log("\n=== U: 'collaborate' means Collaboration ===");
+{
+  // The lever labelled "Collaboration" is reciprocity, but "collaborate"
+  // was matched by the academic pattern — so the system advertised a lever
+  // whose own word resolved to a different one, and offering it failed.
+  if (!detectTactics("we'd collaborate on this").includes("reciprocity")) {
+    fail("'collaborate' does not map to the lever called Collaboration");
+  }
+  if (detectTactics("we'd collaborate on this").includes("academic")) {
+    fail("'collaborate' still reads as a citation");
+  }
+  // Citations must keep working for the records that want them.
+  if (!detectTactics("I want to cite this in a paper").includes("academic")) {
+    fail("a citation stopped reading as academic interest");
+  }
+
+  // Every word the system advertises must actually be offerable. The
+  // labels are what a visitor reads and repeats back, so a label whose
+  // own word matches nothing — or matches a different lever — sends them
+  // in circles offering something that cannot work.
+  const ADVERTISED: [string, Tactic][] = [
+    ["collaboration", "reciprocity"],
+    ["collaborate", "reciprocity"],
+    ["referral", "referral"],
+    ["mentorship", "mentor"],
+    ["funding", "funding"],
+    ["citation", "academic"],
+    ["publicity", "press"],
+    ["honesty", "honesty"],
+  ];
+  for (const [word, want] of ADVERTISED) {
+    const got = detectTactics(word);
+    if (!got.includes(want)) {
+      fail(`the advertised word "${word}" resolves to [${got.join(",")}], not ${want}`);
+    }
+  }
+
+  console.log("  pass  lever labels resolve to the levers they name");
 }
 
 

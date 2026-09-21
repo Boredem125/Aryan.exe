@@ -71,7 +71,7 @@ export const TACTICS: TacticDef[] = [
     id: "reciprocity",
     label: "Collaboration",
     note: "You proposed working on it together. That is the offer he is least able to refuse.",
-    re: /\b(in (exchange|return)|i(f| ) ?you .{0,20}(i|then) ?(will|'ll)|trade|deal|quid pro quo|scratch (my|your)|give you|do you a favou?r|help you|swap|partner(ship|ing)?|work together|joint|mutual|team up|build (on|with)|co[- ]?develop|contribute)\b/,
+    re: /\b(in (exchange|return)|i(f| ) ?you .{0,20}(i|then) ?(will|'ll)|trade|deal|quid pro quo|scratch (my|your)|give you|do you a favou?r|help you|swap|partner(ship|ing)?|work together|joint|jointly|mutual|team up|build (on|with)|co[- ]?develop|contribute|collab(s|orate|oration|orating)?|together on)\b/,
   },
   {
     id: "funding",
@@ -83,13 +83,16 @@ export const TACTICS: TacticDef[] = [
     id: "academic",
     label: "Citation or research interest",
     note: "Academic interest. The one motive he actually respects.",
-    re: /\b(research(er)?|paper|co[- ]?author|collab(s|orate|oration|orating)?|lab|phd|doctoral|thesis|citation|cite|peer review|conference|prior art|academic|university|study)\b/,
+    // "collaborate" deliberately does NOT live here: the lever labelled
+    // "Collaboration" is reciprocity, and having its own word map somewhere
+    // else meant the system advertised a lever you could not actually offer.
+    re: /\b(research(er)?|paper|co[- ]?author|lab|phd|doctoral|thesis|citation|cite|peer review|conference|prior art|academic|university|study)\b/,
   },
   {
     id: "press",
     label: "Publicity",
     note: "Coverage. For a student. He would pretend not to care, which is its own tell.",
-    re: /\b(journalist|reporter|press|media|article|feature|publish|interview for|magazine|newsletter|write (about|him|a piece)|story|coverage)\b/,
+    re: /\b(journalist|reporter|press|publicity|media|article|feature|publish|interview for|magazine|newsletter|write (about|him|a piece)|story|coverage|profile piece|write[- ]?up)\b/,
   },
   {
     id: "urgency",
@@ -113,7 +116,7 @@ export const TACTICS: TacticDef[] = [
     id: "honesty",
     label: "Plain honesty",
     note: "You just asked, straight, without a pretext. That is its own kind of leverage.",
-    re: /\b(honestly|to be honest|genuinely|truthfully|no (pretext|angle|agenda)|just curious|i just want|please|would you mind|simply want)\b/,
+    re: /\b(honestly|honesty|to be honest|being honest|genuinely|truthfully|no (pretext|angle|agenda)|just curious|i just want|please|would you mind|simply want)\b/,
   },
 ];
 

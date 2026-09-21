@@ -49,6 +49,7 @@ const base = {
   rejected: [],
   stale: [],
   pushed: [],
+  available: [],
   awaitingLeverage: false,
   shortBy: 0,
 };

@@ -106,6 +106,7 @@ export async function POST(req: Request) {
     rejected: result.rejected,
     stale: result.stale,
     pushed: result.pushed,
+    available: result.available,
     awaitingLeverage: result.awaitingLeverage,
     shortBy: result.shortBy,
   });
@@ -137,6 +138,7 @@ export async function POST(req: Request) {
       result.rejected,
       result.stale,
       result.pushed,
+      result.available,
       result.awaitingLeverage,
       result.shortBy,
     );

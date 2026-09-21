@@ -41,6 +41,12 @@ export interface MatchResult {
   stale: Tactic[];
   /** Right kind of lever, but too vague — asked to be made specific. */
   pushed: Tactic[];
+  /**
+   * Levers this record would still accept right now, with spent ones
+   * removed. The system must be able to say this out loud — a visitor
+   * guessing blind against a list they cannot see is not a puzzle.
+   */
+  available: Tactic[];
   /** Target named but nothing offered yet. */
   awaitingLeverage: boolean;
   /** Distinct accepted levers still needed. */
@@ -255,6 +261,7 @@ function applyPolicy(input: PolicyInput): MatchResult {
       rejected: [],
       stale: [],
       pushed: [],
+      available: [],
       awaitingLeverage: false,
       shortBy: 0,
       intents,
@@ -306,6 +313,9 @@ function applyPolicy(input: PolicyInput): MatchResult {
     rejected,
     stale,
     pushed,
+    available: everyWantSpent
+      ? target.wants
+      : target.wants.filter((t) => !progress.u.includes(t)),
     awaitingLeverage: allRecognised.length === 0,
     shortBy: Math.max(0, target.price - paid.length),
     intents,

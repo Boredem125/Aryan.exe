@@ -61,6 +61,7 @@ export function fallbackReply(
   rejected: Tactic[],
   stale: Tactic[],
   pushed: Tactic[],
+  available: Tactic[],
   awaitingLeverage: boolean,
   shortBy: number,
 ): string {
@@ -112,6 +113,12 @@ export function fallbackReply(
       lines.push("", `Closer. ${shortBy} more angle needed — a different one.`);
     }
 
+    if (available.length) {
+      lines.push(
+        "",
+        `This one takes: ${available.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")}. Nothing else.`,
+      );
+    }
     lines.push("", node.nudge);
     return lines.join("\n");
   }

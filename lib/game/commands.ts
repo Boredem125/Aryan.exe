@@ -1,4 +1,5 @@
 import { NODES, nodeById, catalogue, TOTAL_NODES } from "./nodes";
+import { tacticDef } from "./tactics";
 import { levelFor, DIRECTIVES } from "./levels";
 import { sealed } from "./matcher";
 import type { Progress } from "./progress";
@@ -70,7 +71,29 @@ function hint(progress: Progress): string {
   }
 
   const spent = progress.a.length;
+
+  // Name the levers outright. A visitor guessing blind against a list they
+  // cannot see is not a puzzle — one spent their whole session offering a
+  // referral, then funding, to a record that takes neither.
+  const everySpent = target.wants.every((t) => progress.u.includes(t));
+  const left = everySpent
+    ? target.wants
+    : target.wants.filter((t) => !progress.u.includes(t));
+  const gone = target.wants.filter((t) => !left.includes(t));
+
   const lines = [`Target: ${target.label}.`, "", target.nudge];
+
+  if (left.length) {
+    lines.push(
+      "",
+      `It takes exactly this, and nothing else: ${left.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")}.`,
+    );
+  }
+  if (gone.length) {
+    lines.push(
+      `Already spent elsewhere, so no longer any use here: ${gone.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")}.`,
+    );
+  }
 
   if (target.wants.length) {
     lines.push(
