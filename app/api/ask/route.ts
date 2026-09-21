@@ -15,6 +15,7 @@ import { fallbackReply, throttleReply } from "@/lib/llm/fallback";
 import { checkLimit, clientIp } from "@/lib/ratelimit";
 import { handleCommand } from "@/lib/game/commands";
 import { panelsFor } from "@/lib/game/panels";
+import { replyContradictsState } from "@/lib/llm/verify";
 
 export const runtime = "nodejs";
 
@@ -141,8 +142,19 @@ export async function POST(req: Request) {
       { role: "user", content: message },
     ]);
     if (res.ok) {
-      reply = res.text;
-      source = "groq";
+      // The model narrates access; it does not grant it. When its reply
+      // contradicts what the server actually did — claiming a record
+      // opened when none did, or claiming contents are unavailable when
+      // the panel is already rendered — discard it. The visitor should
+      // never be told about a panel that is not on their screen.
+      const contradiction = replyContradictsState(res.text, result.opened);
+      if (contradiction) {
+        reply = scripted();
+        source = "fallback";
+      } else {
+        reply = res.text;
+        source = "groq";
+      }
     } else {
       reply = scripted();
     }

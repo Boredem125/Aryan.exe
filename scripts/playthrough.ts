@@ -8,6 +8,8 @@ import {
   type Progress,
 } from "@/lib/game/progress";
 import { NODES, TOTAL_NODES, nodeById } from "@/lib/game/nodes";
+import { detectTactics } from "@/lib/game/tactics";
+import { replyContradictsState } from "@/lib/llm/verify";
 
 /* ============================================================
    Simulates real visits against the matcher.
@@ -202,6 +204,48 @@ console.log("\n=== J: exhausting a record's levers does not lock it ===");
   if (!p.n.includes("EDUCATION")) fail("record unreachable once all its levers were spent");
   else console.log("  pass  spent levers are allowed rather than dead-ending");
 }
+
+/* ---- K: offers of work are recognised however phrased ------ */
+console.log("\n=== K: phrasings of a job offer ===");
+{
+  const offers = ["i'll give work", "I have work for him", "come work for us", "join my team"];
+  for (const o of offers) {
+    if (!detectTactics(o).includes("job")) fail(`"${o}" not recognised as an offer of work`);
+  }
+  // Record names must not read as offers, or naming a record would pay for it.
+  const notOffers = ["show me the engineering work", "what work has he done", "his security work"];
+  for (const n of notOffers) {
+    if (detectTactics(n).includes("job")) fail(`"${n}" wrongly read as an offer of work`);
+  }
+  console.log("  pass  offers detected, record names not mistaken for them");
+}
+
+/* ---- L: the model cannot announce an unlock ----------------- */
+console.log("\n=== L: replies contradicting server state are rejected ===");
+{
+  // Observed in the wild: the model said this on a turn where nothing opened.
+  const liar = "Record opened. Skills & certifications now visible beneath this panel.";
+  if (replyContradictsState(liar, []) !== "false-open") {
+    fail("a false claim of opening was not caught");
+  }
+  if (replyContradictsState("The list appears in the panel below.", []) !== "false-open") {
+    fail("a false reference to a panel was not caught");
+  }
+  // The mirror image: denying contents that are already on screen.
+  const denier = "The record is open but the details are not available in this interface.";
+  if (replyContradictsState(denier, ["PATENTS"]) !== "false-unavailable") {
+    fail("a false claim of unavailability was not caught");
+  }
+  // Honest replies must survive untouched.
+  const honest = "Skills & certifications remains sealed. Offer a referral and it opens.";
+  if (replyContradictsState(honest, []) !== null) fail("an honest refusal was rejected");
+  const presenting = "A referral. Cheap to promise, valuable if real. Note the nine certifications.";
+  if (replyContradictsState(presenting, ["STACK"]) !== null) {
+    fail("an honest presentation was rejected");
+  }
+  console.log("  pass  false openings and false denials rejected, honest replies kept");
+}
+
 
 console.log(
   failures === 0 ? "\nPLAYTHROUGH PASSED\n" : `\nPLAYTHROUGH FAILED — ${failures} problem(s)\n`,

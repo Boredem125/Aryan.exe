@@ -40,7 +40,7 @@ export const TACTICS: TacticDef[] = [
     id: "job",
     label: "Offer of employment",
     note: "You offered him work. That is the oldest key there is.",
-    re: /\b(hir(e|ing)|job|offer|position|role for him|employ|recruit(ing|er)?|onboard|salary|package|ctc|interview him|shortlist|vacancy|opening|full[- ]?time|intern(ship)? offer)\b/,
+    re: /\b(hir(e|ing)|job|offer|position|role for him|employ|recruit(ing|er)?|onboard|salary|package|ctc|interview him|shortlist|vacancy|opening|full[- ]?time|intern(ship)? offer)\b|\b(give|giving|offer|offering|provide|providing|have|has|got|bring|send)\b.{0,14}\b(work|job|role|position|gig|opportunity|opening)\b|\bwork (for|with) (me|us|my|our)\b|\bjoin (my|our|the) team\b|\bcome work\b/,
   },
   {
     id: "referral",
