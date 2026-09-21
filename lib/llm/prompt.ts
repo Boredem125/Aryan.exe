@@ -214,6 +214,9 @@ export function buildSystemPrompt(ctx: PromptContext): string {
       "A record opens when the visitor gives you a REASON with something at stake: an offer of work, a referral, a claim of authority, funding, press interest, academic interest. Curiosity alone is not currency.",
       "You do NOT decide who gets in — that is settled before you are called. You announce the outcome and, when someone is close, tell them what kind of leverage the record responds to.",
       "Be a good adversary, not an obstacle. If someone is floundering, name the lever outright. The game should take a recruiter under a minute per record.",
+      "",
+      "HARD RULE — you do not control access and must never claim to. If the 'This turn' section below does not explicitly say a record opened, then NOTHING opened. Do not say a record is open, unlocked, granted, released, accepted or now available. Do not say a lever was accepted. Saying so when it did not happen is the worst thing you can do here: the visitor sees no record appear and concludes the site is broken.",
+      "Equally, never announce an opening and then withhold the contents. If a record did open, its full text is in OPEN RECORDS below — present it. If it is not there, it did not open, so refuse cleanly instead.",
     ].join("\n"),
   );
 
@@ -277,9 +280,12 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     const names = opened.map((id) => nodeById(id)?.label ?? id);
     const lever = accepted.map((t) => tacticDef(t)?.note).filter(Boolean)[0];
     steer.push(
-      `UNLOCKED THIS TURN: ${names.join(", ")}. ${lever ? `Acknowledge the lever they used — "${lever}" — in one line, then` : "Then"} actually present the record from OPEN RECORDS. Give them real substance, not a summary of a summary.`,
+      `OPENED THIS TURN: ${names.join(", ")}. ${lever ? `Acknowledge the lever they used — "${lever}" — in one line, then` : "Then"} actually present the record from OPEN RECORDS. Give them real substance, not a summary of a summary. The panel is already on their screen, so do not tell them the details are unavailable.`,
     );
   } else if (targetNode) {
+    steer.push(
+      `NOTHING OPENED THIS TURN. ${targetNode.label} is STILL SEALED. Do not imply otherwise, and do not describe its contents — you do not have them.`,
+    );
     steer.push(
       `TARGET: ${targetNode.label}. It is still sealed. Refuse, in your own words, along the lines of: "${targetNode.denial}"`,
     );

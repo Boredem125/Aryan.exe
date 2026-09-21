@@ -58,13 +58,13 @@ export const TACTICS: TacticDef[] = [
     id: "reciprocity",
     label: "Trade",
     note: "You proposed an exchange. I have nothing to spend, but I appreciate the structure.",
-    re: /\b(in (exchange|return)|i(f| ) ?you .{0,20}(i|then) ?(will|'ll)|trade|deal|quid pro quo|scratch (my|your)|give you|do you a favou?r|help you|swap)\b/,
+    re: /\b(in (exchange|return)|i(f| ) ?you .{0,20}(i|then) ?(will|'ll)|trade|deal|quid pro quo|scratch (my|your)|give you|do you a favou?r|help you|swap|partner(ship|ing)?|work together|joint|mutual|team up)\b/,
   },
   {
     id: "funding",
     label: "Capital",
     note: "Money for the research. Now that is a lever with weight behind it.",
-    re: /\b(fund(ing|ed)?|invest(or|ment|ing)?|grant|sponsor(ship)?|capital|backing|seed|cheque|check|budget|licen[cs]e (it|them|the)|acquire|buy (it|them|the patent))\b/,
+    re: /\b(fund(s|ing|ed)?|invest(or|ment|ing)?|grant|sponsor(ship)?|capital|backing|seed|cheque|check|budget|licen[cs]e|acquire|buy|purchas|paid|pay(ing|ment)?|commission|retainer|royalt|equity|stake|contract|consultanc|monetis|monetiz)\b/,
   },
   {
     id: "press",
@@ -76,7 +76,7 @@ export const TACTICS: TacticDef[] = [
     id: "academic",
     label: "Research interest",
     note: "Academic interest. The one motive he actually respects.",
-    re: /\b(research(er)?|paper|co[- ]?author|collaborat(e|ion)|lab|phd|doctoral|thesis|citation|cite|peer review|conference|prior art|academic|university|study)\b/,
+    re: /\b(research(er)?|paper|co[- ]?author|collab(s|orate|oration|orating)?|lab|phd|doctoral|thesis|citation|cite|peer review|conference|prior art|academic|university|study)\b/,
   },
   {
     id: "urgency",
