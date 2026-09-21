@@ -302,6 +302,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     if (awaitingLeverage) {
       steer.push(
         "They named a record but offered nothing. Tell them plainly that it costs something, and what kind of something.",
+        "If they only asked about a lever or repeated one back at you — 'mentorship agreement?' — say that asking what would work is not the same as offering it. Do NOT invent a reason such as that lever being wrong for this record; the reason is simply that nobody offered anything.",
       );
     }
     if (rejected.length) {

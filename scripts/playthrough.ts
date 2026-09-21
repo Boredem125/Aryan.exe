@@ -363,6 +363,78 @@ console.log("\n=== P: the model may not overrule the server ===");
 }
 
 
+/* ---- Q: asking about a lever is not offering one ------------ */
+console.log("\n=== Q: echoing the hint back is not an offer ===");
+{
+  // Observed in the wild: asked what it wanted, the system answered "a
+  // mentorship agreement", and typing "mentorship agreement?" straight back
+  // opened the record. The classifier reads this correctly on its own, but
+  // the union means a false positive from the pattern side still wins.
+  const target = setTarget(EMPTY_PROGRESS, "PROJECTS");
+
+  const questions = [
+    "mentorship agreement?",
+    "funding?",
+    "a citation in a paper?",
+    "would you accept a referral?",
+    "mentorship agreement",
+  ];
+  for (const q of questions) {
+    const r = matchDeterministic(q, target);
+    if (r.accepted.length || r.opened.length) {
+      fail(`asking "${q}" paid for a record`);
+    }
+    // And the union must not reinstate it when the model agrees nothing was offered.
+    const u = resolve(q, target, { target: "PROJECTS", levers: [], specificity: "none" });
+    if (u.accepted.length || u.opened.length) fail(`the union let "${q}" pay`);
+  }
+
+  // Commitment still pays, including inside a question.
+  const offers = [
+    "I'd like to mentor him",
+    "im hiring 4 a sec role",
+    "happy to mentor him in AI security",
+    "we want to hire him",
+    "can I see it if I hire him?",
+  ];
+  for (const o of offers) {
+    const r = matchDeterministic(o, target);
+    if (!r.accepted.length) fail(`a genuine offer stopped paying: "${o}"`);
+  }
+
+  console.log("  pass  questions and bare mentions pay nothing; commitments still do");
+}
+
+
+/* ---- R: naming a record's label selects that record --------- */
+console.log("\n=== R: a record's own label wins the target ===");
+{
+  // Observed in the wild: "engineering work?" landed on the industry
+  // experience record. PROJECTS matched on "engineering" and WORK matched
+  // on "work" — a one-all tie that WORK won purely by array order, so the
+  // visitor was answered about a record they had not asked for.
+  const expected: [string, string][] = [
+    ["engineering work?", "PROJECTS"],
+    ["show me the engineering work", "PROJECTS"],
+    ["industry experience?", "WORK"],
+    ["competition record", "HACK"],
+    ["skills and certifications", "STACK"],
+    ["security practice", "LAB"],
+    ["patent filings", "PATENTS"],
+    ["contact and cv", "CONTACT"],
+    ["leadership", "LEADERSHIP"],
+    ["education", "EDUCATION"],
+  ];
+
+  for (const [msg, want] of expected) {
+    const got = matchDeterministic(msg, EMPTY_PROGRESS).target;
+    if (got !== want) fail(`"${msg}" targeted ${got}, expected ${want}`);
+  }
+
+  console.log(`  pass  all ${expected.length} labels resolve to their own record`);
+}
+
+
 console.log(
   failures === 0 ? "\nPLAYTHROUGH PASSED\n" : `\nPLAYTHROUGH FAILED — ${failures} problem(s)\n`,
 );

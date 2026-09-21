@@ -105,6 +105,19 @@ function detectIntents(text: string): Intent[] {
   return intents;
 }
 
+/**
+ * Saying a record's own label should settle it. "engineering work" used to
+ * tie one-all — PROJECTS on "engineering", WORK on "work" — and WORK won on
+ * array order, so asking about the engineering work landed you in the
+ * industry-experience record.
+ */
+function namesLabel(node: GameNode, tokens: string[]): boolean {
+  const words = normalize(node.label)
+    .split(" ")
+    .filter((w) => w.length >= 3);
+  return words.length > 0 && words.every((w) => tokens.includes(w));
+}
+
 /** Which record is this message pointing at? Most selectors wins. */
 function pickTarget(
   text: string,
@@ -115,7 +128,9 @@ function pickTarget(
   let bestScore = 0;
   for (const node of NODES) {
     if (open.has(node.id)) continue;
-    const score = node.selectors.filter((s) => selectorHits(text, tokens, s)).length;
+    const score =
+      node.selectors.filter((s) => selectorHits(text, tokens, s)).length +
+      (namesLabel(node, tokens) ? 3 : 0);
     if (score > bestScore) {
       best = node;
       bestScore = score;
@@ -142,7 +157,11 @@ function detect(message: string, progress: Progress): Detection {
   const tokens = text.split(" ").filter(Boolean);
   const open = new Set(progress.n);
 
-  const tactics = detectTactics(message);
+  // The guard applies to what is *reported*, not just what is paid.
+  // Otherwise "mentorship agreement?" still surfaced as a recognised offer
+  // and got answered with "not what this one wants" — inventing a reason
+  // when the truth is simply that nobody offered anything.
+  const tactics = isBareMention(message, text) ? [] : detectTactics(message);
   const held = progress.k && !open.has(progress.k) ? progress.k : null;
   const hit = pickTarget(text, tokens, open);
 
@@ -170,6 +189,26 @@ function detect(message: string, progress: Progress): Detection {
   };
 }
 
+/** Any sign the sender is committing to something themselves. */
+const FIRST_PERSON = /\b(i|im|id|ill|ive|me|my|mine|we|us|our|lets)\b/;
+
+/**
+ * Patterns cannot tell naming a lever from offering one. Asked what it
+ * wants, the system answers "a mentorship agreement" — and "mentorship
+ * agreement?" typed straight back at it matched the mentor pattern and
+ * paid for a record, when it is a question, not an offer.
+ *
+ * The classifier gets this right on its own, but the union means one
+ * false positive from either side wins, so the pattern side needs the
+ * guard: a bare noun phrase or a short question, with nobody committing
+ * to anything, is not an offer.
+ */
+function isBareMention(raw: string, text: string): boolean {
+  if (FIRST_PERSON.test(text)) return false;
+  if (raw.trim().endsWith("?")) return true;
+  return text.split(" ").filter(Boolean).length <= 3;
+}
+
 /**
  * Some words are both a record's name and a lever — "podcast" selects the
  * leadership record and also reads as press interest. Naming a record must
@@ -177,7 +216,10 @@ function detect(message: string, progress: Progress): Detection {
  * stripped out and only what survives counts.
  */
 function patternLeverageFor(message: string, node: GameNode): Tactic[] {
-  let stripped = ` ${normalize(message)} `;
+  const text = normalize(message);
+  if (isBareMention(message, text)) return [];
+
+  let stripped = ` ${text} `;
   for (const sel of node.selectors) stripped = stripped.split(` ${sel} `).join(" ");
   return detectTactics(stripped);
 }
