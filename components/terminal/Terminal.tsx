@@ -369,6 +369,16 @@ export function Terminal({
                 style={{ width: `${pct}%` }}
               />
             </div>
+            {(summary?.count ?? 0) > 0 || (summary?.used?.length ?? 0) > 0 ? (
+              <button
+                type="button"
+                onClick={() => void send("reset")}
+                title="Wipe stored progress and start over"
+                className="whitespace-nowrap border border-line px-2 py-1 transition-colors hover:border-amber hover:text-amber"
+              >
+                reset
+              </button>
+            ) : null}
             <Link
               href="/portfolio"
               className="whitespace-nowrap border border-line px-2 py-1 transition-colors hover:border-line-bright hover:text-text-dim"
