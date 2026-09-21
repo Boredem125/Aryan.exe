@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { match } from "@/lib/game/matcher";
+import { resolve } from "@/lib/game/matcher";
 import {
   decodeProgress,
   encodeProgress,
   openRecords,
   setTarget,
   spendTactics,
+  pushForSpecifics,
   progressSummary,
 } from "@/lib/game/progress";
 import { catalogue } from "@/lib/game/nodes";
@@ -16,6 +17,7 @@ import { checkLimit, clientIp } from "@/lib/ratelimit";
 import { handleCommand } from "@/lib/game/commands";
 import { panelsFor } from "@/lib/game/panels";
 import { replyContradictsState } from "@/lib/llm/verify";
+import { classify } from "@/lib/llm/classify";
 
 export const runtime = "nodejs";
 
@@ -83,11 +85,16 @@ export async function POST(req: Request) {
     );
   }
 
-  /* --- the server decides what opens. Never the model. --------- */
-  const result = match(message, progress);
+  /* --- the model reads the message; the server decides ---------
+     classify() returns null on any failure, and resolve() then falls
+     back to the deterministic path, so a flaky classifier degrades
+     into the old behaviour rather than breaking the game. */
+  const classification = await classify(message);
+  const result = resolve(message, progress, classification);
 
   let next = setTarget(progress, result.target);
   if (result.accepted.length) next = spendTactics(next, result.accepted);
+  if (result.pushed.length) next = pushForSpecifics(next, result.pushed);
   if (result.opened.length) next = openRecords(next, result.opened);
 
   const system = buildSystemPrompt({
@@ -98,6 +105,7 @@ export async function POST(req: Request) {
     accepted: result.accepted,
     rejected: result.rejected,
     stale: result.stale,
+    pushed: result.pushed,
     awaitingLeverage: result.awaitingLeverage,
     shortBy: result.shortBy,
   });
@@ -128,6 +136,7 @@ export async function POST(req: Request) {
       result.accepted,
       result.rejected,
       result.stale,
+      result.pushed,
       result.awaitingLeverage,
       result.shortBy,
     );

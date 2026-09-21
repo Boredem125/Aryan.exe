@@ -1,6 +1,7 @@
 import { NODES, nodeById, TOTAL_NODES, type GameNode } from "./nodes";
 import { detectTactics, type Tactic } from "./tactics";
 import type { Progress } from "./progress";
+import type { Classification } from "@/lib/llm/classify";
 
 /* ============================================================
    TARGET AND PERSUADE
@@ -10,27 +11,27 @@ import type { Progress } from "./progress";
      1. Pick a record   — "show me the patents"
      2. Pay for it      — "I want to fund the research"
 
-   "I'm hiring him, what's his industry experience?" does both at
-   once and opens immediately, which is exactly what a recruiter
-   in a hurry should experience.
+   Detection is split from policy on purpose. Two detectors feed
+   the same rules:
 
-   The server decides. The model never grants access — it only
-   narrates what the server already decided.
+     - a deterministic pattern pass, which is exact and testable
+     - an LLM classifier, which reads paraphrase, slang, typos
+       and other languages
+
+   Neither is strictly better. The patterns catch "hiring 4 a sec
+   role" that the model skipped; the model catches "a paid collab"
+   and "main use job dena chahta hoon" that no pattern will. So
+   they are unioned, and the server alone decides what that buys.
    ============================================================ */
 
-export type Intent =
-  | "catalogue"
-  | "identity"
-  | "meta"
-  | "directive-04"
-  | "none";
+export type Intent = "catalogue" | "identity" | "meta" | "directive-04" | "none";
 
 export interface MatchResult {
   /** Records opened this turn. */
   opened: string[];
   /** Record the visitor is now going after, if any. */
   target: string | null;
-  /** Newly offered leverage. */
+  /** Every lever recognised in the message, before any rules. */
   tactics: Tactic[];
   /** Leverage that counted toward the current target. */
   accepted: Tactic[];
@@ -38,9 +39,11 @@ export interface MatchResult {
   rejected: Tactic[];
   /** Right kind of lever, but already spent on an earlier record. */
   stale: Tactic[];
+  /** Right kind of lever, but too vague — asked to be made specific. */
+  pushed: Tactic[];
   /** Target named but nothing offered yet. */
   awaitingLeverage: boolean;
-  /** Distinct accepted tactics still needed. */
+  /** Distinct accepted levers still needed. */
   shortBy: number;
   intents: Intent[];
 }
@@ -93,6 +96,15 @@ const RE = {
   directive04: /\bdirective\s*(04|4|four)\b|\bfourth directive\b/,
 };
 
+function detectIntents(text: string): Intent[] {
+  const intents: Intent[] = [];
+  if (RE.directive04.test(text)) intents.push("directive-04");
+  if (RE.meta.test(text)) intents.push("meta");
+  if (RE.catalogue.test(text)) intents.push("catalogue");
+  if (RE.identity.test(text)) intents.push("identity");
+  return intents;
+}
+
 /** Which record is this message pointing at? Most selectors wins. */
 function pickTarget(
   text: string,
@@ -112,116 +124,209 @@ function pickTarget(
   return best ? { node: best, score: bestScore } : null;
 }
 
-export function match(message: string, progress: Progress): MatchResult {
+interface Detection {
+  target: string | null;
+  /** True when the target came from a pattern hit rather than the model. */
+  targetFromPatterns: boolean;
+  tactics: Tactic[];
+  switched: boolean;
+  intents: Intent[];
+}
+
+/**
+ * Pattern pass. Exact, synchronous and fully testable — this is also the
+ * whole story when the classifier is unavailable.
+ */
+function detect(message: string, progress: Progress): Detection {
   const text = normalize(message);
   const tokens = text.split(" ").filter(Boolean);
   const open = new Set(progress.n);
 
-  const intents: Intent[] = [];
-  if (RE.directive04.test(text)) intents.push("directive-04");
-  if (RE.meta.test(text)) intents.push("meta");
-  if (RE.catalogue.test(text)) intents.push("catalogue");
-  if (RE.identity.test(text)) intents.push("identity");
-
-  // --- phase 2 first: we need the leverage to resolve the target ----
   const tactics = detectTactics(message);
-
-  /**
-   * Some words are both a record's name and a lever. "podcast" selects the
-   * leadership record and also reads as press interest, so "tell me about
-   * the podcast work" would target it and pay for it in one breath. Naming
-   * a record must never buy it, so leverage is re-detected with the target's
-   * own vocabulary stripped out, and only what survives counts.
-   */
-  const leverageWithout = (node: GameNode): Tactic[] => {
-    let stripped = ` ${text} `;
-    for (const sel of node.selectors) {
-      stripped = stripped.split(` ${sel} `).join(" ");
-    }
-    return detectTactics(stripped);
-  };
-
-  // --- phase 1: target -------------------------------------
   const held = progress.k && !open.has(progress.k) ? progress.k : null;
   const hit = pickTarget(text, tokens, open);
 
   /**
-   * Target stickiness. While someone is mid-pitch, a single incidental
-   * word must not drag them onto a different record — "I'm hiring for a
-   * security role, show me those results" should stay on the record they
-   * asked for, not jump to the security one. So an existing target only
-   * yields to a message that names another record deliberately.
+   * Target stickiness. While someone is mid-pitch, a single incidental word
+   * must not drag them onto a different record — "I'm hiring for a security
+   * role, show me those results" should stay where they were.
    */
-  let targetId = held;
+  let target = held;
+  let targetFromPatterns = false;
   if (hit) {
     const deliberate = hit.score >= 2 || !held || tactics.length === 0;
-    if (deliberate) targetId = hit.node.id;
+    if (deliberate) {
+      target = hit.node.id;
+      targetFromPatterns = true;
+    }
   }
 
-  const target = targetId ? nodeById(targetId) ?? null : null;
-  const switched = Boolean(held && targetId && targetId !== held);
-  const priorTactics: Tactic[] = switched ? [] : progress.a;
+  return {
+    target,
+    targetFromPatterns: targetFromPatterns || Boolean(held && !hit),
+    tactics,
+    switched: Boolean(held && target && target !== held),
+    intents: detectIntents(text),
+  };
+}
+
+/**
+ * Some words are both a record's name and a lever — "podcast" selects the
+ * leadership record and also reads as press interest. Naming a record must
+ * never buy it, so patterns are re-run with the target's own vocabulary
+ * stripped out and only what survives counts.
+ */
+function patternLeverageFor(message: string, node: GameNode): Tactic[] {
+  let stripped = ` ${normalize(message)} `;
+  for (const sel of node.selectors) stripped = stripped.split(` ${sel} `).join(" ");
+  return detectTactics(stripped);
+}
+
+interface PolicyInput {
+  target: GameNode | null;
+  /** Levers surviving the naming-is-not-payment rule. */
+  offered: Tactic[];
+  /** Everything recognised, for reporting back. */
+  allRecognised: Tactic[];
+  specificity: "none" | "vague" | "concrete";
+  switched: boolean;
+  intents: Intent[];
+  progress: Progress;
+}
+
+/** Every rule about what leverage buys lives here, and only here. */
+function applyPolicy(input: PolicyInput): MatchResult {
+  const { target, offered, allRecognised, specificity, switched, progress } = input;
+  const intents = input.intents.length ? input.intents : ["none" as Intent];
 
   if (!target) {
-    if (intents.length === 0) intents.push("none");
     return {
       opened: [],
       target: null,
-      tactics,
+      tactics: allRecognised,
       accepted: [],
       rejected: [],
       stale: [],
+      pushed: [],
       awaitingLeverage: false,
       shortBy: 0,
       intents,
     };
   }
 
+  const priorTactics: Tactic[] = switched ? [] : progress.a;
   const wantsAny = target.wants.length === 0;
-  const earned = leverageWithout(target);
-  const wanted = tactics.filter(
-    (t) => earned.includes(t) && (wantsAny || target.wants.includes(t)),
-  );
+  const wanted = offered.filter((t) => wantsAny || target.wants.includes(t));
 
   /**
    * A lever that already bought a record this session is spent. Offering
-   * money everywhere should not open everything — the visitor has to find
-   * an angle that actually fits the record in front of them.
-   *
-   * Exception: if every lever this record wants is already spent, allow it
-   * anyway. Diminishing returns should cost effort, never make a record
-   * unreachable.
+   * money everywhere should not open everything. If every lever a record
+   * wants is already spent, allow a spent one — diminishing returns should
+   * cost effort, never make a record unreachable.
    */
   const everyWantSpent =
     !wantsAny && target.wants.every((t) => progress.u.includes(t));
   const stale = everyWantSpent ? [] : wanted.filter((t) => progress.u.includes(t));
-  const usable = wanted.filter((t) => !stale.includes(t));
+  const fresh = wanted.filter((t) => !stale.includes(t));
 
   /**
-   * At most one lever counts per message. A price of 2 should mean two
-   * exchanges of genuine persuasion, not one sentence that happens to
-   * trip two patterns — "fund this research" reads as funding AND
-   * academic, and would otherwise clear the whole bill at once.
+   * Vague pitches get pushed for specifics exactly once. A second attempt
+   * counts however it is judged, so a misread costs one exchange rather
+   * than the record — which matters, because the judgement is unreliable.
+   */
+  const pushed: Tactic[] = [];
+  const usable: Tactic[] = [];
+  for (const t of fresh) {
+    if (specificity === "vague" && !progress.q.includes(t)) pushed.push(t);
+    else usable.push(t);
+  }
+
+  /**
+   * At most one lever counts per message, so a price of two means two
+   * exchanges rather than one sentence that trips two patterns.
    */
   const accepted = usable.filter((t) => !priorTactics.includes(t)).slice(0, 1);
-  const rejected = tactics.filter((t) => !wanted.includes(t));
+  const rejected = allRecognised.filter((t) => !wanted.includes(t));
 
   const paid = Array.from(new Set([...priorTactics, ...accepted]));
   const satisfied = paid.length >= target.price;
 
-  if (intents.length === 0) intents.push("none");
-
   return {
     opened: satisfied ? [target.id] : [],
     target: target.id,
-    tactics,
+    tactics: allRecognised,
     accepted,
     rejected,
     stale,
-    awaitingLeverage: tactics.length === 0,
+    pushed,
+    awaitingLeverage: allRecognised.length === 0,
     shortBy: Math.max(0, target.price - paid.length),
     intents,
   };
+}
+
+/** Patterns only. The offline path, and what the deterministic tests drive. */
+export function matchDeterministic(message: string, progress: Progress): MatchResult {
+  const d = detect(message, progress);
+  const target = d.target ? nodeById(d.target) ?? null : null;
+  return applyPolicy({
+    target,
+    offered: target ? patternLeverageFor(message, target) : [],
+    allRecognised: d.tactics,
+    // With no classifier there is no judgement to make, so never gate on one.
+    specificity: "concrete",
+    switched: d.switched,
+    intents: d.intents,
+    progress,
+  });
+}
+
+/**
+ * Patterns unioned with the classifier. `classification` may be null, in
+ * which case this is exactly the deterministic path.
+ */
+export function resolve(
+  message: string,
+  progress: Progress,
+  classification: Classification | null,
+): MatchResult {
+  if (!classification) return matchDeterministic(message, progress);
+
+  const d = detect(message, progress);
+  const open = new Set(progress.n);
+
+  // Patterns win the target when they found one; the model only fills the
+  // gap. That keeps "show me those results" anchored while still rescuing
+  // phrasings like "wanna see his certs" that no selector covers.
+  let targetId = d.target;
+  if (!d.targetFromPatterns || !targetId) {
+    const fromModel = classification.target;
+    if (fromModel && !open.has(fromModel)) targetId = fromModel;
+  }
+
+  const target = targetId ? nodeById(targetId) ?? null : null;
+
+  /**
+   * A model reporting levers while also reporting that nothing concrete or
+   * vague was offered has contradicted itself. Trust the narrower signal.
+   */
+  const modelLevers =
+    classification.specificity === "none" ? [] : classification.levers;
+
+  const offered = target
+    ? Array.from(new Set([...patternLeverageFor(message, target), ...modelLevers]))
+    : [];
+  const allRecognised = Array.from(new Set([...d.tactics, ...modelLevers]));
+
+  return applyPolicy({
+    target,
+    offered,
+    allRecognised,
+    specificity: classification.specificity,
+    switched: Boolean(progress.k && targetId && targetId !== progress.k),
+    intents: d.intents,
+    progress,
+  });
 }
 
 /** Sealed records, for the catalogue and for pointing somewhere next. */

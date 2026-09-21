@@ -31,6 +31,12 @@ export interface Progress {
    * line opens the whole profile.
    */
   u: Tactic[];
+  /**
+   * Levers offered vaguely that have already been pushed back on once for
+   * this target. A second attempt counts regardless of how it is judged,
+   * so a misread of "vague" costs the visitor one exchange, never a record.
+   */
+  q: Tactic[];
   t: number;
 }
 
@@ -40,6 +46,7 @@ export const EMPTY_PROGRESS: Progress = {
   k: null,
   a: [],
   u: [],
+  q: [],
   t: 0,
 };
 
@@ -105,6 +112,7 @@ export function decodeProgress(token: string | undefined | null): Progress {
       k,
       a: tacticList(parsed.a),
       u: tacticList(parsed.u),
+      q: tacticList(parsed.q),
       t: typeof parsed.t === "number" ? parsed.t : 0,
     };
   } catch {
@@ -126,6 +134,7 @@ export function openRecords(p: Progress, ids: string[]): Progress {
     n: Array.from(n),
     k: clearTarget ? null : p.k,
     a: clearTarget ? [] : p.a,
+    q: clearTarget ? [] : p.q,
     u,
     t: stamp(),
   };
@@ -134,7 +143,13 @@ export function openRecords(p: Progress, ids: string[]): Progress {
 /** Switching target resets the tactics spent — each lock is paid separately. */
 export function setTarget(p: Progress, id: string | null): Progress {
   if (id === p.k) return p;
-  return { ...p, k: id, a: [], t: stamp() };
+  return { ...p, k: id, a: [], q: [], t: stamp() };
+}
+
+/** Record that we have already asked this lever to be made specific. */
+export function pushForSpecifics(p: Progress, tactics: Tactic[]): Progress {
+  if (!tactics.length) return p;
+  return { ...p, q: Array.from(new Set([...p.q, ...tactics])), t: stamp() };
 }
 
 export function spendTactics(p: Progress, tactics: Tactic[]): Progress {
@@ -151,6 +166,7 @@ export function progressSummary(p: Progress) {
     total: TOTAL_NODES,
     target: p.k,
     spent: p.a,
+    pushed: p.q,
     used: p.u,
     // Human-readable, so the client can explain a resumed session without
     // importing lib/game/tactics — those patterns are the answer key.

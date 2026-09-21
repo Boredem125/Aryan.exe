@@ -60,6 +60,7 @@ export function fallbackReply(
   accepted: Tactic[],
   rejected: Tactic[],
   stale: Tactic[],
+  pushed: Tactic[],
   awaitingLeverage: boolean,
   shortBy: number,
 ): string {
@@ -78,8 +79,25 @@ export function fallbackReply(
   if (node) {
     const lines = [`SEALED — ${node.label}.`, "", node.denial];
 
-    if (awaitingLeverage) {
+    // Progress leads. A visitor whose lever was accepted but who still owes
+    // one more must not be answered with a complaint about some other thing
+    // they said — offering funding and authority together and being told
+    // only "authority is not what this wants" reads as outright rejection.
+    if (accepted.length) {
+      lines.push(
+        "",
+        `${accepted.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")} — accepted.`,
+        shortBy > 0
+          ? `${shortBy} more, and it has to be a different angle.`
+          : "",
+      );
+    } else if (awaitingLeverage) {
       lines.push("", "You named it but offered nothing. It costs a reason.");
+    } else if (pushed.length) {
+      lines.push(
+        "",
+        `${pushed.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")}, with nothing behind it. Say which fund, which paper, which role — or say it again and I will take it.`,
+      );
     } else if (stale.length) {
       lines.push(
         "",

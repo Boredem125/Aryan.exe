@@ -178,6 +178,7 @@ export interface PromptContext {
   accepted: Tactic[];
   rejected: Tactic[];
   stale: Tactic[];
+  pushed: Tactic[];
   awaitingLeverage: boolean;
   shortBy: number;
 }
@@ -191,6 +192,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     accepted,
     rejected,
     stale,
+    pushed,
     awaitingLeverage,
     shortBy,
   } = ctx;
@@ -305,6 +307,11 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     if (rejected.length) {
       steer.push(
         `They tried: ${rejected.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")}. Recognised, but not what this record wants. Say so, and steer them toward the right kind of leverage without reciting a list.`,
+      );
+    }
+    if (pushed.length) {
+      steer.push(
+        `They offered ${pushed.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")} but with nothing behind it. Ask them to make it concrete — who they are, which fund, which paper, which role. Ask once, lightly, as though you are giving them a chance rather than refusing. If they restate it at all, it will count.`,
       );
     }
     if (stale.length) {

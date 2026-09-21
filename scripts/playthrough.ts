@@ -1,9 +1,10 @@
-import { match, sealed } from "@/lib/game/matcher";
+import { matchDeterministic as match, matchDeterministic, resolve, sealed } from "@/lib/game/matcher";
 import {
   EMPTY_PROGRESS,
   openRecords,
   setTarget,
   spendTactics,
+  pushForSpecifics,
   progressSummary,
   type Progress,
 } from "@/lib/game/progress";
@@ -269,6 +270,60 @@ console.log("\n=== M: a record's own vocabulary is not leverage ===");
   if (!hiring.opened.includes("WORK")) fail("a genuine offer alongside the record name failed to pay");
 
   console.log("  pass  naming a record does not buy it; real leverage still counts");
+}
+
+
+/* ---- N: vague pitches are pushed once, then accepted -------- */
+console.log("\n=== N: one push for specifics, never two ===");
+{
+  // Fixture classifications keep this deterministic — the live model is
+  // exercised by `npm run classifier` instead.
+  let p = setTarget(EMPTY_PROGRESS, "PATENTS");
+
+  const first = resolve("I'll fund it", p, {
+    target: "PATENTS",
+    levers: ["funding"],
+    specificity: "vague",
+  });
+  if (first.accepted.length) fail("a vague pitch counted on the first attempt");
+  if (!first.pushed.includes("funding")) fail("a vague pitch was not pushed for specifics");
+
+  p = pushForSpecifics(p, first.pushed);
+  const second = resolve("I'll fund it, I mean it", p, {
+    target: "PATENTS",
+    levers: ["funding"],
+    specificity: "vague",
+  });
+  if (!second.accepted.includes("funding")) fail("a repeated pitch was refused — pushed twice");
+  if (second.pushed.length) fail("the same lever was pushed a second time");
+
+  const concrete = resolve(
+    "I run Foo Capital and want to license this",
+    setTarget(EMPTY_PROGRESS, "PATENTS"),
+    { target: "PATENTS", levers: ["funding"], specificity: "concrete" },
+  );
+  if (!concrete.accepted.includes("funding")) fail("a concrete pitch was not accepted at once");
+
+  console.log("  pass  vague pushed once then accepted; concrete accepted immediately");
+}
+
+/* ---- O: the game is whole without the classifier ------------ */
+console.log("\n=== O: no classifier means no change and no gating ===");
+{
+  // This is what happens whenever Groq is down, so it must be identical
+  // to the pattern path rather than merely similar.
+  for (const m of ["I want to hire him", "show me the patents", "I'd like to mentor him"]) {
+    const withNull = JSON.stringify(resolve(m, EMPTY_PROGRESS, null));
+    const patterns = JSON.stringify(matchDeterministic(m, EMPTY_PROGRESS));
+    if (withNull !== patterns) fail(`resolve(null) diverged from the pattern path on "${m}"`);
+  }
+
+  // And nothing is gated, because there is no judgement to gate on.
+  const r = resolve("I want to hire him", setTarget(EMPTY_PROGRESS, "WORK"), null);
+  if (r.pushed.length) fail("a pitch was pushed for specifics with no classifier present");
+  if (!r.opened.includes("WORK")) fail("the offline path failed to open a record");
+
+  console.log("  pass  identical to the pattern path, and never gates");
 }
 
 
