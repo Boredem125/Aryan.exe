@@ -47,7 +47,7 @@ export function BootSequence({
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-14 font-mono sm:py-20">
       <h1 className="text-2xl font-semibold tracking-tight text-text sm:text-3xl">
-        ARYAN<span className="text-accent">.EXE</span>
+        ARYAN<span className="text-red">.</span><span className="text-accent">EXE</span>
       </h1>
 
       <div className="mt-5 space-y-1 text-sm text-text-faint" aria-live="polite">
@@ -76,7 +76,9 @@ export function BootSequence({
                 onClick={() => onEnter(r.id)}
                 className="group flex w-full items-baseline gap-3 px-1 py-2.5 text-left transition-colors hover:bg-surface"
               >
-                <span className="shrink-0 text-[10px] text-amber">SEALED</span>
+                <span className="sealed-pulse shrink-0 text-[10px] font-semibold tracking-wider text-red">
+                  SEALED
+                </span>
                 <span className="flex min-w-0 flex-1 items-baseline gap-2 text-sm text-text group-hover:text-accent">
                   <span className="shrink-0">{r.label}</span>
                   <span className="hidden min-w-0 truncate text-xs text-text-faint sm:inline">

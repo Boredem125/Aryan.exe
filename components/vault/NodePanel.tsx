@@ -9,18 +9,16 @@ export function NodePanel({ panel }: { panel: Panel }) {
 
   return (
     <section
-      className={`my-4 border ${
-        isVault ? "border-amber-dim bg-amber/5" : "border-line bg-surface"
-      }`}
+      className={`my-4 border ${isVault ? "vault-glow" : "border-line bg-surface"}`}
     >
       <header
         className={`flex items-baseline justify-between gap-3 border-b px-4 py-3 ${
-          isVault ? "border-amber-dim" : "border-line"
+          isVault ? "border-red-dim" : "border-line"
         }`}
       >
         <h3
           className={`font-mono text-sm font-semibold tracking-wide ${
-            isVault ? "text-amber" : "text-accent"
+            isVault ? "vault-title" : "text-accent"
           }`}
         >
           {panel.label}
@@ -67,7 +65,7 @@ export function NodePanel({ panel }: { panel: Panel }) {
                     >
                       <span
                         className={`mt-2 h-1 w-1 shrink-0 rounded-full ${
-                          isVault ? "bg-amber-dim" : "bg-accent-dim"
+                          isVault ? "bg-red" : "bg-accent-dim"
                         }`}
                       />
                       <span>{it}</span>
