@@ -618,6 +618,52 @@ console.log("\n=== V: context beats keyword matching ===");
 }
 
 
+/* ---- W: answering the follow-up completes the offer --------- */
+console.log("\n=== W: one push means one push ===");
+{
+  // Observed in the wild: offered a citation, asked to be specific, the
+  // visitor answered "in ieee xplore" — and was asked to be specific again,
+  // then again. The follow-up names no lever, so the pending offer never
+  // completed and the same demand repeated forever.
+  let p: Progress = setTarget(EMPTY_PROGRESS, "PATENTS");
+
+  const first = resolve("citation, i will cite", p, {
+    target: "PATENTS",
+    levers: ["academic"],
+    specificity: "vague",
+  });
+  if (!first.pushed.includes("academic")) fail("a vague citation was not pushed");
+  p = pushForSpecifics(p, first.pushed);
+
+  // The answer names no lever at all, and must still settle the pending one.
+  const answer = resolve("in ieee xplore", p, {
+    target: "PATENTS",
+    levers: [],
+    specificity: "none",
+  });
+  if (!answer.accepted.includes("academic")) {
+    fail("answering the follow-up did not complete the pending offer");
+  }
+  p = spendTactics(p, answer.accepted);
+
+  const second = resolve("my fund will also back it", p, {
+    target: "PATENTS",
+    levers: ["funding"],
+    specificity: "concrete",
+  });
+  if (!second.opened.includes("PATENTS")) fail("the second lever did not open the patents");
+
+  // But a bare question is not an answer, or "ok?" would pay for things.
+  for (const q of ["ok?", "mentorship agreement?", "really?"]) {
+    const z = pushForSpecifics(setTarget(EMPTY_PROGRESS, "PATENTS"), ["academic"]);
+    const r = resolve(q, z, { target: "PATENTS", levers: [], specificity: "none" });
+    if (r.accepted.length) fail(`a bare question completed a pending offer: "${q}"`);
+  }
+
+  console.log("  pass  the follow-up settles the offer; bare questions do not");
+}
+
+
 console.log(
   failures === 0 ? "\nPLAYTHROUGH PASSED\n" : `\nPLAYTHROUGH FAILED — ${failures} problem(s)\n`,
 );

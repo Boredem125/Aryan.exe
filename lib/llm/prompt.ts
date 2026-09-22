@@ -294,6 +294,11 @@ export function buildSystemPrompt(ctx: PromptContext): string {
       `OPENED THIS TURN: ${names.join(", ")}. A formatted panel containing the FULL record is already rendered on their screen, directly beneath your reply. Do NOT reproduce it, list it, summarise it item by item, or repeat its bullet points — they would read everything twice. ${lever ? `Acknowledge the lever in one line — "${lever}" — then add` : "Add"} at most one or two sentences pointing at what is actually worth noticing in it. Then stop.`,
     );
   } else if (targetNode) {
+    if (accepted.length) {
+      steer.push(
+        `ACCEPTED THIS TURN: ${accepted.map((t) => tacticDef(t)?.label).filter(Boolean).join(", ")}. Say so first, plainly — it counted. Do NOT call it insufficient, vague or incomplete, and do NOT ask for more of the SAME thing; that demand is settled. ${shortBy > 0 ? `This record needs ${shortBy} more, and it must be a DIFFERENT kind of lever.` : ""}`,
+      );
+    }
     steer.push(
       `NOTHING OPENED THIS TURN. ${targetNode.label} is STILL SEALED. Do not imply otherwise, and do not describe its contents — you do not have them.`,
     );

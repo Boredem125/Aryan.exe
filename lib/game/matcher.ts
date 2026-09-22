@@ -156,6 +156,8 @@ interface Detection {
   targetFromPatterns: boolean;
   /** 4 when the message names a record's full label, 2 for a bare id. */
   namingScore: number;
+  /** False for bare mentions and one-word questions. */
+  substantive: boolean;
   tactics: Tactic[];
   switched: boolean;
   intents: Intent[];
@@ -174,7 +176,8 @@ function detect(message: string, progress: Progress): Detection {
   // Otherwise "mentorship agreement?" still surfaced as a recognised offer
   // and got answered with "not what this one wants" — inventing a reason
   // when the truth is simply that nobody offered anything.
-  const tactics = isBareMention(message, text) ? [] : detectTactics(message);
+  const bare = isBareMention(message, text);
+  const tactics = bare ? [] : detectTactics(message);
   const held = progress.k && !open.has(progress.k) ? progress.k : null;
   const hit = pickTarget(text, tokens, open);
 
@@ -197,6 +200,14 @@ function detect(message: string, progress: Progress): Detection {
     target,
     targetFromPatterns: targetFromPatterns || Boolean(held && !hit),
     namingScore: hit ? namingBonus(hit.node, tokens) : 0,
+    // Deliberately NOT the bare-mention rule. That rule stops a short noun
+    // phrase creating a NEW offer; this one asks whether the visitor said
+    // anything real at all. "in ieee xplore" is three words with no "I" in
+    // it, so the bare rule rejected it — but it is a perfectly good answer
+    // to "which venue?", and rejecting it left the same question being
+    // asked over and over.
+    substantive:
+      tokens.length >= 2 && !(message.trim().endsWith("?") && !FIRST_PERSON.test(text)),
     tactics,
     switched: Boolean(held && target && target !== held),
     intents: detectIntents(text),
@@ -245,6 +256,8 @@ interface PolicyInput {
   /** Everything recognised, for reporting back. */
   allRecognised: Tactic[];
   specificity: "none" | "vague" | "concrete";
+  /** The message says something real, rather than being a bare mention. */
+  substantive: boolean;
   switched: boolean;
   intents: Intent[];
   progress: Progress;
@@ -252,7 +265,8 @@ interface PolicyInput {
 
 /** Every rule about what leverage buys lives here, and only here. */
 function applyPolicy(input: PolicyInput): MatchResult {
-  const { target, offered, allRecognised, specificity, switched, progress } = input;
+  const { target, offered, allRecognised, specificity, switched, substantive, progress } =
+    input;
   const intents = input.intents.length ? input.intents : ["none" as Intent];
 
   if (!target) {
@@ -299,6 +313,20 @@ function applyPolicy(input: PolicyInput): MatchResult {
   }
 
   /**
+   * Answering the follow-up counts. Asked to make a citation specific, a
+   * visitor replies "in IEEE Xplore" — which names no lever at all, so the
+   * pending offer never completed and they were asked for specifics again,
+   * and again. One push means one push: the next substantive reply settles
+   * the lever it was pushed on.
+   */
+  if (!usable.length && substantive && progress.q.length) {
+    for (const t of progress.q) {
+      const allowed = wantsAny || target.wants.includes(t);
+      if (allowed && !progress.u.includes(t)) usable.push(t);
+    }
+  }
+
+  /**
    * At most one lever counts per message, so a price of two means two
    * exchanges rather than one sentence that trips two patterns.
    */
@@ -335,6 +363,7 @@ export function matchDeterministic(message: string, progress: Progress): MatchRe
     allRecognised: d.tactics,
     // With no classifier there is no judgement to make, so never gate on one.
     specificity: "concrete",
+    substantive: d.substantive,
     switched: d.switched,
     intents: d.intents,
     progress,
@@ -394,6 +423,7 @@ export function resolve(
     offered,
     allRecognised,
     specificity: classification.specificity,
+    substantive: d.substantive,
     switched: Boolean(progress.k && targetId && targetId !== progress.k),
     intents: d.intents,
     progress,
