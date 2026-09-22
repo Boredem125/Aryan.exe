@@ -571,6 +571,53 @@ console.log("\n=== U: 'collaborate' means Collaboration ===");
 }
 
 
+/* ---- V: the model owns the target, patterns keep one veto --- */
+console.log("\n=== V: context beats keyword matching ===");
+{
+  // Observed in the wild: pursuing the patents, told they needed a citation,
+  // the visitor answered "i will cite his work" — and "work" matched the
+  // employment record, whose id is literally WORK, dragging them off the
+  // record they were mid-negotiation on. Patterns read words; only the
+  // model reads a conversation, so the model decides the target.
+  const onPatents = setTarget(EMPTY_PROGRESS, "PATENTS");
+
+  const patternsAlone = matchDeterministic("i will cite his work", onPatents);
+  if (patternsAlone.target !== "WORK") {
+    console.log(`  note  patterns now resolve this to ${patternsAlone.target}`);
+  }
+
+  const withContext = resolve("i will cite his work", onPatents, {
+    target: "PATENTS",
+    levers: ["academic"],
+    specificity: "vague",
+  });
+  if (withContext.target !== "PATENTS") {
+    fail(`context did not hold the target: got ${withContext.target}`);
+  }
+
+  // Naming a record's full label outright still overrides the model, because
+  // that is unambiguous and inference is not.
+  const named = resolve("show me the competition record", onPatents, {
+    target: "PATENTS",
+    levers: [],
+    specificity: "none",
+  });
+  if (named.target !== "HACK") {
+    fail(`naming a label outright did not win: got ${named.target}`);
+  }
+
+  // And the model may still move the visitor when they clearly switch.
+  const moved = resolve("actually his industry experience instead", onPatents, {
+    target: "WORK",
+    levers: [],
+    specificity: "none",
+  });
+  if (moved.target !== "WORK") fail(`a deliberate switch was blocked: got ${moved.target}`);
+
+  console.log("  pass  context holds the target; explicit naming and switching still work");
+}
+
+
 console.log(
   failures === 0 ? "\nPLAYTHROUGH PASSED\n" : `\nPLAYTHROUGH FAILED — ${failures} problem(s)\n`,
 );

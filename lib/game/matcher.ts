@@ -154,6 +154,8 @@ interface Detection {
   target: string | null;
   /** True when the target came from a pattern hit rather than the model. */
   targetFromPatterns: boolean;
+  /** 4 when the message names a record's full label, 2 for a bare id. */
+  namingScore: number;
   tactics: Tactic[];
   switched: boolean;
   intents: Intent[];
@@ -194,6 +196,7 @@ function detect(message: string, progress: Progress): Detection {
   return {
     target,
     targetFromPatterns: targetFromPatterns || Boolean(held && !hit),
+    namingScore: hit ? namingBonus(hit.node, tokens) : 0,
     tactics,
     switched: Boolean(held && target && target !== held),
     intents: detectIntents(text),
@@ -352,14 +355,25 @@ export function resolve(
   const d = detect(message, progress);
   const open = new Set(progress.n);
 
-  // Patterns win the target when they found one; the model only fills the
-  // gap. That keeps "show me those results" anchored while still rescuing
-  // phrasings like "wanna see his certs" that no selector covers.
+  /**
+   * The model decides the target, because it is the only one of the two that
+   * can read a conversation. Patterns match words in isolation, so "i will
+   * cite his work" — a direct answer to the patents asking for a citation —
+   * scored on "work" and threw the visitor into the employment record.
+   *
+   * Patterns keep one veto: naming a record's full label outright is
+   * unambiguous and beats inference. Below that the model wins, and patterns
+   * only fill in when the model names nothing.
+   */
+  const namedOutright = d.namingScore >= 4;
+  const fromModel =
+    classification.target && !open.has(classification.target)
+      ? classification.target
+      : null;
+
   let targetId = d.target;
-  if (!d.targetFromPatterns || !targetId) {
-    const fromModel = classification.target;
-    if (fromModel && !open.has(fromModel)) targetId = fromModel;
-  }
+  if (!namedOutright && fromModel) targetId = fromModel;
+  else if (!targetId && fromModel) targetId = fromModel;
 
   const target = targetId ? nodeById(targetId) ?? null : null;
 

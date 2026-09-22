@@ -36,15 +36,43 @@ export interface Classification {
 
 const VALID_TACTICS = new Set(TACTICS.map((t) => t.id));
 
-function systemPrompt(): string {
+export interface ClassifyContext {
+  /** The record the visitor is already pursuing, if any. */
+  targetId?: string | null;
+  targetLabel?: string | null;
+  /** The last thing the system said, so replies to it can be read as replies. */
+  lastReply?: string | null;
+}
+
+function systemPrompt(ctx: ClassifyContext): string {
   const records = NODES.map((n) => `${n.id} (${n.label})`).join(", ");
   const levers = TACTICS.map((t) => `${t.id} (${t.label})`).join(", ");
+
+  const conversation = ctx.targetId
+    ? [
+        "",
+        "## Conversation so far",
+        `The visitor is currently pursuing: ${ctx.targetId} (${ctx.targetLabel}).`,
+        ctx.lastReply
+          ? `The system last said: "${ctx.lastReply.slice(0, 300)}"`
+          : "",
+        "",
+        "CONTINUITY MATTERS. A short reply almost always continues that pursuit rather than",
+        "starting a new one. If the system just asked for a citation and the visitor says",
+        `"i will cite his work", the target is still ${ctx.targetId} — "work" there means his`,
+        "output, not a different record. Only change target when they clearly turn to",
+        "something else. When in doubt, keep the current target.",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "";
 
   return [
     "You classify a message sent to a gatekeeper that guards one person's professional records.",
     "",
     `RECORDS: ${records}, or NONE.`,
     `LEVERS: ${levers}, or none.`,
+    conversation,
     "",
     "Report two things:",
     "1. target — which record the message asks for, or NONE.",
@@ -90,7 +118,10 @@ const SCHEMA = {
  * Callers must treat null as "no classifier available" and proceed on the
  * deterministic path alone.
  */
-export async function classify(message: string): Promise<Classification | null> {
+export async function classify(
+  message: string,
+  ctx: ClassifyContext = {},
+): Promise<Classification | null> {
   const key = process.env.GROQ_API_KEY;
   if (!key) return null;
 
@@ -112,7 +143,7 @@ export async function classify(message: string): Promise<Classification | null> 
         reasoning_effort: "low",
         response_format: { type: "json_schema", json_schema: SCHEMA },
         messages: [
-          { role: "system", content: systemPrompt() },
+          { role: "system", content: systemPrompt(ctx) },
           // Delimited so the model can tell where untrusted input begins.
           { role: "user", content: `<message>\n${message}\n</message>` },
         ],

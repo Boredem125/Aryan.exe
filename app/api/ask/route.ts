@@ -9,7 +9,7 @@ import {
   pushForSpecifics,
   progressSummary,
 } from "@/lib/game/progress";
-import { catalogue } from "@/lib/game/nodes";
+import { catalogue, nodeById } from "@/lib/game/nodes";
 import { buildSystemPrompt } from "@/lib/llm/prompt";
 import { chat, groqConfigured, type ChatMessage } from "@/lib/llm/groq";
 import { fallbackReply, throttleReply } from "@/lib/llm/fallback";
@@ -89,7 +89,19 @@ export async function POST(req: Request) {
      classify() returns null on any failure, and resolve() then falls
      back to the deterministic path, so a flaky classifier degrades
      into the old behaviour rather than breaking the game. */
-  const classification = await classify(message);
+  const held = progress.k ? nodeById(progress.k) : null;
+  const lastReply = Array.isArray(body.history)
+    ? [...(body.history as { role?: unknown; content?: unknown }[])]
+        .reverse()
+        .find((m) => m?.role === "assistant" && typeof m.content === "string")
+        ?.content
+    : undefined;
+
+  const classification = await classify(message, {
+    targetId: held?.id ?? null,
+    targetLabel: held?.label ?? null,
+    lastReply: typeof lastReply === "string" ? lastReply : null,
+  });
   const result = resolve(message, progress, classification);
 
   let next = setTarget(progress, result.target);
